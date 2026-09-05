@@ -14,17 +14,19 @@ Foundational plumbing. Nothing user-facing works until this is solid, so resist 
  
 | # | Task / Prompt | Status |
 |---|---|---|
-| 0.1 | Initialise an Expo (React Native, TypeScript, strict mode) project. Set up the folder structure, linting (ESLint + Prettier), and absolute imports. Confirm it runs on both an iOS simulator and an Android emulator. | ⬜ |
-| 0.2 | Create the `/docs` folder and move the six spec docs + CLAUDE.md into the repo root/docs as appropriate. Confirm CLAUDE.md is at the location Claude Code reads. | ⬜ |
-| 0.3 | Create two Supabase projects (dev, prod) — or one with a clear separation strategy. Record connection details in env config (never committed). Wire the Expo app to the dev project. | ⬜ |
-| 0.4 | Set up environment config management (dev vs prod) for the app and Edge Functions. Ensure no secrets land in the client bundle. Document how to switch environments. | ⬜ |
-| 0.5 | Author the initial database schema as Supabase **migration files**, following `docs/nashfit-v1-data-model.md` exactly: `exercises`, `muscle_groups`, `equipment`, `exercise_muscle_groups`, `exercise_media`, `users`, `plans`, `sessions`, `session_exercises`, `sets`. Include enums, nullability, and FKs as specified. | ⬜ |
-| 0.6 | Set up Supabase Row Level Security policies: a user can read/write only their own `users`/`plans`/`sessions`/`session_exercises`/`sets`; exercise content tables are read-only to clients. Write these as migrations. | ⬜ |
+| 0.1 | Initialise an Expo (React Native, TypeScript, strict mode) project. Set up the folder structure, linting (ESLint + Prettier), and absolute imports. Confirm it runs on both an iOS simulator and an Android emulator. | 🟨 |
+| 0.2 | Create the `/docs` folder and move the six spec docs + CLAUDE.md into the repo root/docs as appropriate. Confirm CLAUDE.md is at the location Claude Code reads. | ✅ |
+| 0.3 | Create two Supabase projects (dev, prod) — or one with a clear separation strategy. Record connection details in env config (never committed). Wire the Expo app to the dev project. | 🟨 |
+| 0.4 | Set up environment config management (dev vs prod) for the app and Edge Functions. Ensure no secrets land in the client bundle. Document how to switch environments. | 🟨 |
+| 0.5 | Author the initial database schema as Supabase **migration files**, following `docs/nashfit-v1-data-model.md` exactly: `exercises`, `muscle_groups`, `equipment`, `exercise_muscle_groups`, `exercise_media`, `users`, `plans`, `sessions`, `session_exercises`, `sets`. Include enums, nullability, and FKs as specified. | ✅ |
+| 0.6 | Set up Supabase Row Level Security policies: a user can read/write only their own `users`/`plans`/`sessions`/`session_exercises`/`sets`; exercise content tables are read-only to clients. Write these as migrations. | ✅ |
 | 0.7 | Establish the Edge Functions project structure (Deno, TypeScript) and deploy a trivial health-check function to confirm the deploy pipeline works. | ⬜ |
-| 0.8 | Set up CI (lint + typecheck + test on push). Keep it minimal but present from the start. | ⬜ |
+| 0.8 | Set up CI (lint + typecheck + test on push). Keep it minimal but present from the start. | 🟨 |
 | 0.9 | Wire Sentry into the app and Edge Functions (crash/error monitoring live from day one). | ⬜ |
-| 0.10 | Wire PostHog into the app; add a tiny event-tracking helper so instrumenting events later is one call. Confirm an event lands in the dashboard. | ⬜ |
+| 0.10 | Wire PostHog into the app; add a tiny event-tracking helper so instrumenting events later is one call. Confirm an event lands in the dashboard. | 🟨 |
  
+**Phase 0 partials.** 0.1 🟨 pending a simulator/emulator run. 0.3 🟨 — both projects exist and credentials are wired into config, but no Supabase client yet (it lands with auth in 1.1, where session persistence belongs). 0.4 🟨 — app side complete; the Edge Function half waits for functions to exist (0.7). 0.5 ✅ — four migrations applied and behaviourally verified against local Postgres 17.6; not yet pushed to the remote nashfit-dev project (tracked under 0.3). 0.8 🟨 pending a test step. See `docs/nashfit-progress-log.md` for the detail behind every status here.
+
 ---
  
 ## Phase 1 — Auth & Accounts (Epic 1)
@@ -168,3 +170,5 @@ Corpus/RAG decomposition · nutrition · community/social · manual program-buil
 - Units switch-after-logging behaviour — lock preference or denormalize unit onto each set (decide before launch, affects 7.8).
 - `is_primary` enforcement — app logic vs partial unique index (affects 3.2/4.x).
 - Phase-1 review surface — dashboard-only vs a simple internal page (affects 6.10).
+- **Brand tokens have no task.** `docs/nashfit-brand-guidelines.md` defines the dark-first system (`#ED070D`, Lora + Inter); `src/theme/` still holds Expo's default palette. Needs a task before the first user-facing screen, or Phase 1's auth screens get built twice.
+- **`docs/nashfit-principles-document-template.md` is missing** from `/docs` despite being listed in CLAUDE.md as source of truth. Hard prerequisite for Phase 6 and the longest lead-time item — Nash owns it.

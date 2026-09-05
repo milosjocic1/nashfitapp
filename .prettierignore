@@ -6,3 +6,6 @@ ios/
 android/
 package-lock.json
 *.md
+
+# Local, machine-specific Claude Code state (gitignored, never in CI)
+.claude/settings.local.json

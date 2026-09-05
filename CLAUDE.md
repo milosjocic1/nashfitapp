@@ -19,6 +19,9 @@ docs/nashfit-v1-user-stories.md — the feature list and build order.
 docs/nashfit-principles-document-template.md — Nash's methodology (source of truth for plan generation).
 docs/nashfit-user-info-gathering-template.md — onboarding inputs vs. preferences.
 docs/nashfit-build-plan.md — the sequenced task/prompt list and progress tracker. Update it as work completes.
+docs/nashfit-progress-log.md — chronological record of work done, for client transparency and invoicing. Append to it; never rewrite history.
+docs/nashfit-brand-guidelines.md — colour, type, and component tokens for the app UI.
+docs/nashfit-environment-setup.md — Supabase/Sentry/PostHog setup, the client-safe vs server-only key split, and how environments switch.
 Stack (do not swap without an explicit decision)
 App: Expo / React Native, TypeScript, cross-platform iOS + Android from one codebase.
 Backend/DB/Auth/Storage: Supabase (Postgres, Supabase Auth, Storage).
@@ -69,3 +72,14 @@ I'm an experienced web/software engineer; mobile and Supabase idioms are newer t
 Propose, then confirm on anything with a lasting consequence (schema, third-party wiring, auth/payments). These are the expensive-to-change layers.
 When a task is ambiguous, ask before building — a wrong assumption in the data or auth layer is costly.
 Keep the build plan (docs/nashfit-build-plan.md) updated: mark tasks done, note anything that changed.
+
+Progress logging (this project bills by the work, so the record matters)
+
+At the end of any session that produced a deliverable, append an entry to docs/nashfit-progress-log.md. Run /log-progress to do it, or do it unprompted before signing off.
+
+Rules for that file:
+Append only. Never rewrite or delete a past entry — it's an invoicing record. Corrections go in a new entry that says what it corrects.
+Be accurate, not flattering. Record what was actually verified versus assumed. A 🟨 that says why is worth more than a ✅ that can't be defended.
+Never invent effort or time figures. Leave the Effort column blank for the developer.
+Keep blockers current: anything waiting on the client goes in the "Outstanding" table at the top, and comes out when it lands.
+The build plan holds statuses (what's left); the progress log holds detail (what happened). Don't duplicate narrative across both.

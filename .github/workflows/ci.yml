@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A newer push to the same branch makes an in-flight run redundant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, typecheck & format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `if: always()` on the checks below so one failure doesn't mask the
+      # others — a single push reports every problem at once.
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        if: always()
+        run: npm run typecheck
+
+      - name: Format check
+        if: always()
+        run: npm run format:check
+
+      # No test step yet: the project has no test runner. Add one here
+      # alongside Jest when the first tests land (build-plan task 0.8 covers
+      # lint + typecheck + test; the test half is deferred until there is
+      # logic worth covering — plan-output validation, offline sync,
+      # subscription state, per CLAUDE.md).
