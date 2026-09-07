@@ -9,6 +9,8 @@ module.exports = defineConfig([
   // Prettier owns formatting; ESLint owns correctness.
   eslintConfigPrettier,
   {
-    ignores: ['dist/*', 'node_modules/*', '.expo/*'],
+    // supabase/functions is Deno — different globals and module resolution,
+    // linted by the Deno toolchain rather than the app's ESLint config.
+    ignores: ['dist/*', 'node_modules/*', '.expo/*', 'supabase/functions/*'],
   },
 ]);

@@ -9,3 +9,6 @@ package-lock.json
 
 # Local, machine-specific Claude Code state (gitignored, never in CI)
 .claude/settings.local.json
+
+# Supabase CLI local state (gitignored, never in CI)
+supabase/.temp/

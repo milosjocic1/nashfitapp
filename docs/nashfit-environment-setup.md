@@ -61,7 +61,11 @@ Sign up at [sentry.io](https://sentry.io). Create one organisation, then **two p
 | `nashfit-app` | React Native | Crashes and errors in the mobile app |
 | `nashfit-functions` | Node | Errors thrown inside Supabase Edge Functions |
 
-Two projects rather than one because the alerting, release tracking, and stack-trace handling differ between a mobile client and a server runtime — merging them makes both noisier. Collect the **DSN** for each (Project Settings → Client Keys).
+Two projects rather than one because the alerting, release tracking, and stack-trace handling differ between a mobile client and a server runtime — merging them makes both noisier. Pick the platform accurately at creation; Sentry tailors source-map and stack-trace handling to it.
+
+Collect the **DSN** for each at **Settings → Projects → [project] → SDK Setup → Client Keys (DSN)**. It looks like `https://<publickey>@o123456.ingest.sentry.io/7654321`. DSNs permit event submission only, never read access, so the app's DSN is legitimately client-safe and belongs in `EXPO_PUBLIC_SENTRY_DSN`. The functions DSN goes to Edge Function secrets instead.
+
+**Expect a development build.** Unlike PostHog, `@sentry/react-native` ships native code. Under Expo Go it captures JavaScript errors but not native crashes — most of the value. Fully verifying task 0.9 will likely require `expo run:ios` / `run:android`, and therefore Xcode and Android Studio. That is the same toolchain Phase 2 needs for RevenueCat, so it is not extra work overall, just earlier.
 
 ### 3. PostHog (task 0.10)
 
@@ -187,6 +191,40 @@ Right now `app.json` sets **neither** `ios.bundleIdentifier` nor `android.packag
 **Recommendation:** two identifiers, `com.nashfit.app` and `com.nashfit.app.dev`, selected by build profile in `app.config.ts`. The cost is a few lines of config; the cost of the alternative is discovering it at task 8.5.
 
 **Needs your input:** the reverse-DNS prefix should be a domain Nash controls. `com.nashfit.app` is a reasonable default, but if his site is e.g. `nashfit.co.uk` then `uk.co.nashfit.app` is the conventional form. Confirm the domain before we set it.
+
+---
+
+---
+
+## Part 4 — Edge Function secrets (task 0.4, server half) — **IMPLEMENTED 2026-09-05**
+
+This is the other side of the client/server split at the top of this document. Everything the client must never see lives here.
+
+**Setting a secret** (per Supabase project — dev and prod are separate, so each needs its own):
+
+```
+npx supabase secrets set NAME=value          # one
+npx supabase secrets set --env-file .env.fn  # several; never commit that file
+npx supabase secrets list                    # names and digests, not values
+```
+
+**Reading one inside a function:** `Deno.env.get('NAME')`. See `supabase/functions/health/index.ts`.
+
+**What belongs here, and when:**
+
+| Secret | Needed for | Task |
+|---|---|---|
+| `NASHFIT_ENV` | Lets a function report which project it is running in | 0.7 ✅ set on dev |
+| Claude API key | Plan generation | 6.2 |
+| Supabase secret key (`sb_secret_…`) | Minting signed media URLs; privileged writes that bypass RLS | 4.2, 6.4 |
+| RevenueCat webhook secret | Verifying webhook authenticity | 2.6 |
+| Sentry DSN (functions project) | Server-side error reporting | 0.9 |
+
+**Two things Supabase injects automatically** — do not set them yourself: `SUPABASE_URL` and the project's keys are already available to every function, which is why `withSupabase` can construct `ctx.supabaseAdmin` without configuration.
+
+**Switching environments, server side.** There is no `APP_ENV` equivalent: dev and prod are *different Supabase projects*, so a function is only ever deployed to one of them and reads that project's secrets. `supabase link` decides which project `deploy` and `secrets set` target — check with `supabase projects list` before deploying anything to prod.
+
+**Verified end to end on 2026-09-05.** The `health` function returns `{"status":"ok","environment":"development",…}` on `nashfit-dev`, where `environment` is read from the secret rather than hardcoded — so the secrets channel is proven, not assumed. Requests without a key, or with an invalid one, are rejected `401` by the gateway before reaching function code.
 
 ---
 

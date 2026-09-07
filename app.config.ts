@@ -43,8 +43,9 @@ const config: ExpoConfig = {
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: identifiers.scheme,
-  userInterfaceStyle: 'automatic',
-  newArchEnabled: true,
+  // Dark only. The brand is dark-first and Nash has approved one palette, a
+  // dark one — see docs/nashfit-brand-guidelines.md and src/theme/index.ts.
+  userInterfaceStyle: 'dark',
   ios: {
     supportsTablet: true,
     bundleIdentifier: identifiers.bundleId,
@@ -52,12 +53,13 @@ const config: ExpoConfig = {
   android: {
     package: identifiers.bundleId,
     adaptiveIcon: {
-      backgroundColor: '#E6F4FE',
+      // Brand black. The logo is designed for a dark field and must never sit
+      // on white (§4 of the brand guidelines).
+      backgroundColor: '#090708',
       foregroundImage: './assets/images/android-icon-foreground.png',
       backgroundImage: './assets/images/android-icon-background.png',
       monochromeImage: './assets/images/android-icon-monochrome.png',
     },
-    edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
   },
   web: {
@@ -68,15 +70,40 @@ const config: ExpoConfig = {
     'expo-router',
     // Required by posthog-react-native to report device locale.
     'expo-localization',
+    // SDK 57 requires these to be declared explicitly rather than
+    // auto-linked. expo-font now loads the Lora/Inter brand faces (0.11);
+    // expo-image is still unused but due in Phase 3/4 for exercise thumbnails.
+    'expo-font',
+    'expo-image',
+    'expo-status-bar',
+    'expo-web-browser',
+    // Sentry ships native code; the plugin wires up the iOS/Android crash
+    // handlers and source-map upload at build time (task 0.9).
+    //
+    // organization/project are required for source-map upload. Without them a
+    // production stack trace arrives minified — a captured error nobody can
+    // read. Upload also needs SENTRY_AUTH_TOKEN in the build environment; that
+    // token grants write access to the Sentry org, so it belongs in EAS build
+    // secrets and must never reach the repo or the bundle.
+    [
+      '@sentry/react-native',
+      {
+        organization: 'nashfit',
+        project: 'nashfit',
+      },
+    ],
     [
       'expo-splash-screen',
       {
         image: './assets/images/splash-icon.png',
         imageWidth: 200,
         resizeMode: 'contain',
-        backgroundColor: '#ffffff',
+        // Brand black in both cases — there is no light theme, and a white
+        // splash flashing before a dark app is exactly the jarring launch the
+        // dark-first direction avoids.
+        backgroundColor: '#090708',
         dark: {
-          backgroundColor: '#000000',
+          backgroundColor: '#090708',
         },
       },
     ],

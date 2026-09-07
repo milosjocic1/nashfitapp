@@ -1,20 +1,28 @@
 import { Tabs } from 'expo-router';
-import React from 'react';
 
-import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { colors, fonts } from '@/theme';
 
+/**
+ * Tab bar in brand colours (task 0.11): dark surface, active item in the single
+ * accent red, inactive in secondary text — per §5 of the brand guidelines.
+ */
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
+        tabBarActiveTintColor: colors.brandRed,
+        tabBarInactiveTintColor: colors.textSecondary,
+        tabBarStyle: {
+          backgroundColor: colors.surface0,
+          borderTopColor: colors.border,
+        },
+        // Sans for controls — small-size legibility beats character here.
+        tabBarLabelStyle: {
+          fontFamily: fonts.sansMedium,
+          fontSize: 12,
+        },
       }}
     >
       <Tabs.Screen

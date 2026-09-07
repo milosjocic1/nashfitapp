@@ -16,11 +16,157 @@ Kept at the top because it's the critical path. Everything below is blocked unti
 
 | Need | Blocks | Detail |
 |---|---|---|
-| Sentry account + two project DSNs | 0.9 | React Native project for the app, Node project for Edge Functions. |
-| iOS simulator / Android emulator run | 0.1 (final ✅) | Neither toolchain installed on the dev machine. Expo Go on a physical device is sufficient for now. |
+| `SENTRY_AUTH_TOKEN` for source-map upload | 0.9 (source maps), 9.2 | Org/project slugs are now configured (`nashfit`/`nashfit`). Upload still needs this token in the build environment — it grants write access to the Sentry org, so EAS build secrets only, never the repo or bundle. Generate at Settings → Auth Tokens. |
+| `nashfit-functions` DSN, via `supabase secrets set` | 0.9 (server half) | Not needed until the first Edge Function that can meaningfully fail (4.2 or 6.2). |
+| Xcode + Android Studio, for a development build | 0.9, 0.10, 2.1 | Three verifications are blocked on it, and RevenueCat makes it mandatory at 2.1 anyway. |
+| Confirm a `$screen` event reached PostHog | 0.10 (final ✅) | The app ran on device; checking PostHog → Activity for a `$screen` event alongside `setup_verification` is the last step to close 0.10. |
 | Nash's domain (for deep links + privacy policy URL) | 1.3, 9.5 | Universal Links / App Links need files hosted on a controlled domain. Not needed for the bundle identifier, which is set. |
-| Dev database password, to link and push the schema | 0.3 (final ✅), 0.7 | Schema is verified locally. Pushing it to nashfit-dev needs `supabase link`, which prompts for the database password set at project creation. |
 | Nash's Principles Document | Phase 6 (6.1–6.5) | Listed in CLAUDE.md as source of truth but absent from `/docs`. Hard prerequisite for plan generation; the longest lead-time item in the project. |
+
+---
+
+## 2026-09-07 — Brand design tokens (task 0.11, added to the plan)
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 0.11 | Brand tokens, type scale, Lora + Inter; scaffold theming retired | ✅ Done | _pending_ | |
+
+**Why this task exists.** It was not in the original build plan. Phase 1 builds three auth screens, and building them against Expo's default light theme would mean rebuilding them when Nash's dark-first system landed. Added and approved 2026-09-06 so the auth screens are built once.
+
+**Delivered.** `src/theme/index.ts` carries the tokens from `docs/nashfit-brand-guidelines.md` §8 verbatim — the colour ramp, the type scale mapped to concrete font families and line heights, radii, and the 48px minimum touch target from §5. `src/theme/use-fonts.ts` loads the six faces. `src/components/text.tsx` is now the app's only text primitive: everything goes through it, so type and colour come from tokens by default and an off-scale size has to be written deliberately rather than by omission.
+
+**Dark only, deliberately.** The guidelines describe the app as dark-first and supply a single palette, which is a dark one. Building a light variant would mean inventing colours Nash has not approved, so there is no light theme and no runtime scheme switching. Recorded as an assumption; if a light theme is ever wanted it should come from Nash.
+
+That decision let a whole class of scaffold code go: `themed-text`, `themed-view`, `use-theme-color`, `use-color-scheme` and its `.web` variant — the same files that produced most of the TypeScript 6 errors during the SDK 57 upgrade. `collapsible` and `external-link` went too; both were unused since the demo removal at 0.1.
+
+**Brand applied at the native level as well**, not just in React: `userInterfaceStyle` is now `dark`, and the splash background and Android adaptive-icon background are brand black (`#090708`) instead of Expo's white and pale blue. §4 is explicit that the logo must never sit on a light field, and a white splash flashing before a dark app is exactly the jarring launch the dark-first direction avoids.
+
+**Font bundle — a real saving.** The first build pulled in **26 font files (~9MB)**: `@expo-google-fonts/inter` re-exports every weight and italic, so importing the package barrel made Metro treat all of them as reachable assets. Switching to per-weight entry points (`@expo-google-fonts/inter/400Regular`) cut it to exactly the **6 faces the type scale uses, 1.43MB**. Verified by counting assets in `expo export` before and after.
+
+**One type note.** `typography` uses `satisfies Record<string, TextStyle>` rather than `as const`. `as const` makes `fontVariant: ['tabular-nums']` a readonly array, which is not assignable to React Native's mutable `FontVariant[]`; `satisfies` keeps key inference for `TypographyRole` while contextually typing each entry correctly.
+
+**Pending Nash's sign-off.** §7 of the guidelines flags the grey surface ramp, the semantic success/warning/error colours, and the Lora-for-Palatino substitution as *extensions* to his existing brand that still need approval. They are implemented because the app cannot be built without them, but they are reversible token changes, not settled identity. The Palatino → Lora swap is the one most worth walking him through.
+
+**Verified.** Typecheck, lint, format check, `expo-doctor` 21/21, and a clean iOS bundle (2096 modules). Not yet seen on a device — the placeholder screen now renders a serif heading and a `surface1` card on the dark page, which is worth an eyeball on the next Expo Go run.
+
+---
+
+## 2026-09-05 (end of day, cont. 2) — Sentry
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 0.9 | `src/lib/monitoring.ts`; `Sentry.wrap` on the root layout; DSN verified | 🟨 Partial | _pending_ | |
+
+**Delivered.** `@sentry/react-native` 7.11 with its Expo config plugin. `src/lib/monitoring.ts` mirrors the analytics module's shape: `initMonitoring()` plus `setMonitoringUser` / `clearMonitoringUser` for the auth lifecycle, sending only the Supabase auth id — never email or name.
+
+Sentry's wizard (`npx @sentry/wizard -i reactNative`) was declined for the same reason PostHog's was: it cannot write to a dynamic `app.config.ts` and would introduce its own env handling rather than reading `src/lib/env.ts`.
+
+**Configuration decisions, all stated in code rather than left to defaults.**
+
+| Setting | Value | Reasoning |
+|---|---|---|
+| `environment` | `env.appEnvironment` | Lets production alerting exclude development without a second Sentry project |
+| `tracesSampleRate` | 1.0 dev, 0.2 production | Traces bill per transaction and a workout logger generates heavy navigation; errors are always sent regardless |
+| `enabled` | `!__DEV__` | Local errors are mostly hot-reload noise already surfaced by Metro. **Consequence:** SDK-level capture cannot be verified from a development run |
+| `sendDefaultPii` | `false` | The app holds age, sex and training history. Sentry's default already excludes PII; stating it explicitly keeps the decision visible rather than resting on a library default |
+
+`initMonitoring()` is called at module scope in `app/_layout.tsx`, before any component renders, so failures during the first render are still captured. The default export is `Sentry.wrap(RootLayout)`, adding error-boundary and performance instrumentation around the whole tree.
+
+**Verified.** Typecheck, lint, `expo-doctor` 21/21, and an iOS bundle (2053 modules) all pass. A verification event was posted directly to the Sentry ingest endpoint parsed out of the DSN — **HTTP 200**, event id `d433cda7667e47b3ae01fa32f6329d4e` — proving the DSN is valid and events reach the project.
+
+**Why 🟨 — three gaps, each with a clear owner.**
+
+1. **SDK capture unverified.** `enabled: !__DEV__` means nothing is sent from a development run, and `@sentry/react-native` ships native code that Expo Go cannot fully exercise anyway. Confirming real crash capture needs a development build.
+2. **Source maps — partly resolved 2026-09-05.** The Expo plugin initially warned *"Missing config for organization, project"*. Org and project slugs are now set in `app.config.ts` (both `nashfit`, read from the dashboard URL `nashfit.sentry.io/projects/nashfit/`) and the warning is gone, confirmed by a clean `expo export`. Upload itself still needs `SENTRY_AUTH_TOKEN` in the build environment at the first real build; that token grants org write access and belongs in EAS build secrets only.
+
+   *Note on project naming:* one Sentry project exists, named `nashfit`, rather than the `nashfit-app` / `nashfit-functions` split originally proposed. The app is wired to it. A separate functions project is not needed until the Edge Function side lands (4.2 or 6.2); decide then whether to split or tag by `environment` within the one project.
+3. **Edge Function side not wired.** Deliberately deferred. It needs the `nashfit-functions` DSN set via `supabase secrets set`, and more importantly a function that can meaningfully fail — the health check cannot. The natural moment is the signed-URL function (4.2) or plan generation (6.2), which is also when it becomes testable.
+
+**Pattern worth noting.** Three verifications now wait on a development build: Sentry SDK capture, PostHog under production config, and any native behaviour. A development build becomes mandatory at task 2.1 for RevenueCat regardless. Installing Xcode and Android Studio before Phase 2 would clear the whole backlog at once.
+
+---
+
+## 2026-09-05 (end of day, cont.) — Edge Functions
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 0.7 | Edge Function project structure; `health` function deployed to nashfit-dev | ✅ Done | _pending_ | |
+| 0.4 | Edge Function secrets pattern established and documented | ✅ Done | _pending_ | |
+
+**Delivered.** `supabase/functions/health/` scaffolded with the CLI rather than hand-written — the current Supabase runtime API turned out to differ from expectation, using `withSupabase` from `@supabase/server` with declared auth modes rather than a raw `Deno.serve` handler. Scaffolding first avoided writing to a stale API.
+
+The health check deliberately proves **three separate things**, so a green response means the whole path works rather than merely "some code ran":
+
+1. **Deploy pipeline** — the function exists and responds at its URL.
+2. **Auth gateway** — declared as `auth: ['publishable']`, so the gateway rejects unkeyed requests before function code runs. The secret key is deliberately *not* accepted; a health endpoint has no need for it.
+3. **Secrets mechanism** — the reported environment is read from `Deno.env.get('NASHFIT_ENV')`, set via `supabase secrets set`, not hardcoded. This is the same channel that will carry the Claude API key (6.2), the Supabase secret key for signed URLs (4.2) and the RevenueCat webhook secret (2.6), so proving it here proves it for those.
+
+**Toolchain separation.** The app's `tsconfig.json` was compiling `supabase/functions` (confirmed with `tsc --listFilesOnly`), which would fail once Deno globals and JSR imports appeared. `supabase/functions` is now excluded from the app's TypeScript config and from ESLint; the Deno toolchain and `supabase functions deploy` type-check that code instead. Deno and React Native have incompatible type environments and cannot share one config.
+
+**Verified against the live deployment on nashfit-dev.**
+
+| Request | Result |
+|---|---|
+| With a valid publishable key | **200** — `{"status":"ok","function":"health","environment":"development",…}` |
+| With no key | **401** `MISSING_CREDENTIALS` from the gateway |
+| With an invalid key | **401** `Invalid API key` |
+
+`environment: "development"` is the meaningful part: it came from the Edge Function secret, so the secrets channel is proven rather than assumed.
+
+**Task 0.4 now complete.** Part 4 of `docs/nashfit-environment-setup.md` documents setting, listing and reading secrets; which secret each upcoming task needs; that `SUPABASE_URL` and the project keys are injected automatically and must not be set manually; and that there is no server-side `APP_ENV` equivalent — dev and prod are different Supabase projects, so `supabase link` decides which one `deploy` and `secrets set` target. Check with `supabase projects list` before ever deploying to prod.
+
+---
+
+## 2026-09-05 (end of day) — Device run confirmed; schema pushed to dev
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 0.1 | App confirmed running on a physical device via Expo Go | ✅ Done | — | |
+| 0.3 | Five migrations pushed to the remote `nashfit-dev` project | ✅ Done | — | |
+
+**Device run.** The developer ran the app through Expo Go on a physical device and confirmed the expected output: `Environment: development`, `Supabase: qwsxlukvoivepdzyjgvu.supabase.co`, `PostHog: configured`, `Sentry: not set up yet`, and a single Home tab. This is the end-to-end proof that the environment chain from `.env.local` through `app.config.ts` and `src/lib/env.ts` works on real hardware, not just in a bundler.
+
+*Caveat for the record:* verified on one physical device via Expo Go. Task 0.1's wording asks for an iOS simulator **and** an Android emulator; neither toolchain is installed, and the second platform has been confirmed only by a successful `expo export --platform android` bundle, not by running. Marked ✅ on the substance — the app runs on real hardware — with the gap stated rather than hidden.
+
+**Schema pushed to dev.** `supabase db push` applied all five migrations to `nashfit-dev`. `supabase migration list` now reports every migration as present both locally and remotely. `nashfit-prod` remains deliberately empty until the schema has proven itself in development use.
+
+---
+
+## 2026-09-05 (later still) — Expo SDK 54 to 57 upgrade
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| — | Upgraded Expo SDK 54.0.37 to 57.0.20 | ✅ Done | _pending_ | |
+| 0.1 | Still pending a device run (now unblocked) | 🟨 | — | |
+
+**Why.** Attempting the Expo Go device run for task 0.1 revealed the installed Expo Go supports SDK 57, while the project was on SDK 54. **Expo Go only ever ships the current SDK**, and iOS offers no way to install an older build — so on SDK 54 Expo Go was simply unavailable, and task 0.1 could not be completed at all without installing Xcode and Android Studio.
+
+Checking npm showed `latest` at 57.0.20: the scaffold was **three major SDKs behind** three weeks after being created (55, 56 and 57 had all shipped). For a v1 launching in 2027 that meant shipping on an SDK from late 2025, missing a year of iOS/Android compatibility work, with Apple's minimum build requirements tightening over time. Developer approved upgrading immediately, while the app was one placeholder screen and two lib modules — the cheapest this would ever be. A checkpoint commit (`19273bf`) was taken first, since two weeks of work was uncommitted.
+
+**Result.** `expo` 57.0.20, React Native 0.86.3, React 19.2.3, expo-router 57.0.19, TypeScript 6.0.3, `eslint-config-expo` 57.0.2. `expo-doctor` 21/21.
+
+**Breaking changes handled.**
+
+| Change | Resolution |
+|---|---|
+| `newArchEnabled` removed from `ExpoConfig` | New Architecture is mandatory in SDK 57; flag deleted from `app.config.ts` |
+| `edgeToEdgeEnabled` removed from the Android config | Edge-to-edge is now always on; flag deleted |
+| `ColorSchemeName` widened to include `'unspecified'` | `colorScheme ?? 'light'` no longer type-checks; narrowed explicitly to `=== 'dark' ? 'dark' : 'light'` in `use-theme-color.ts` and the tabs layout |
+| `SymbolViewProps['name']` became a union including an object form | Can no longer be a `Record` key; `icon-symbol.tsx` now uses `as const satisfies Record<string, …>` |
+| SDK 57 requires several modules declared as plugins | Added `expo-font`, `expo-image`, `expo-status-bar`, `expo-web-browser` to `app.config.ts` |
+| `eslint-config-expo` 57 rejects `setState` inside an effect | `use-color-scheme.web.ts` rewritten with `useSyncExternalStore`, which provides separate server and client snapshots by design — the correct fix for a hydration check, not a rule suppression |
+| **expo-router dropped react-navigation compatibility in SDK 56** | The significant one. Caught by an `expo export`, not by typecheck. All three `@react-navigation/*` direct dependencies removed; `app/_layout.tsx` now imports `ThemeProvider`, `DarkTheme` and `DefaultTheme` from `expo-router`, which exports its own |
+
+**`src/components/haptic-tab.tsx` deleted.** It added haptic feedback on tab press and was the only consumer of `@react-navigation/bottom-tabs` and `@react-navigation/elements`. Those disagreed with expo-router's vendored copy of bottom-tabs on `pressColor` (`string` vs `ColorValue`), an unfixable structural conflict short of casting. Judged not worth preserving: it is scaffold polish on a tab bar with one tab that gets rebuilt at task 1.7 with auth routing, and deleting it removed the whole class of version skew. Easy to reinstate later with `Pressable` plus `expo-haptics`.
+
+**Nothing written for this project needed changing.** `src/lib/env.ts`, `src/lib/analytics.ts` and the five migrations were untouched by the upgrade; every fix was in scaffold-inherited code.
+
+**Verified.**
+- `expo-doctor` 21/21, typecheck (TypeScript 6.0), lint and format check all pass.
+- `expo config` resolves in both environments — dev yields `NashFit (Dev)` / `com.nashfit.app.dev` / `nashfit-dev`, production yields `NashFit` / `com.nashfit.app` / `nashfit`, `sdkVersion` 57.0.0.
+- **iOS bundle** exported (1659 modules) and **Android bundle** exported (1759 modules), both clean. The react-navigation incompatibility surfaced only at bundle time, which is why exports are run rather than trusting typecheck.
+- Environment values still inlined into the compiled bundle.
+- `npm audit` improved from 26 vulnerabilities (9 high) to 19 moderate, with no high severity remaining.
 
 ---
 
