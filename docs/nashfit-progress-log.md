@@ -25,6 +25,67 @@ Kept at the top because it's the critical path. Everything below is blocked unti
 
 ---
 
+## 2026-09-11 (cont.) — Email auth flow complete: sign-in, reset, routing
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 1.2 | Sign-in screen | 🟨 Written | _pending_ | |
+| 1.3 | Password reset: request + set-new-password via deep link | 🟨 Written | _pending_ | |
+| 1.6 | Persistent sessions and sign-out | 🟨 Written | _pending_ | |
+| 1.7 | Auth-state routing | 🟨 Written | _pending_ | |
+
+**Working method changed.** At the developer's suggestion, verification is now batched rather than blocking: code is written and statically verified, and anything needing a device or dashboard accumulates in the new `docs/nashfit-verification-checklist.md`. That file is organised by what each section needs — dashboard only, Expo Go, development build — with expected results for every item, so a testing session is a single uninterrupted pass rather than a series of context switches.
+
+**Auth state (1.6).** `src/features/auth/context.tsx` holds one subscription to Supabase's auth events and exposes the session through context, so no screen polls or keeps its own copy. It also carries `initialising`, which is neither signed-in nor signed-out: on a cold start, reading the session out of encrypted storage is asynchronous, and routing on that unknown is exactly what makes the sign-in screen flash before an already-authenticated user reaches the app.
+
+Analytics and monitoring identities are set from the auth-state listener rather than at the sign-in call site, so they stay correct when a session ends without anyone tapping sign out — an expiry or a refresh failure clears them too.
+
+**Routing (1.7).** Both stacks are declared and `Stack.Protected` decides which is reachable, rather than imperatively redirecting inside an effect. The imperative pattern is the usual source of navigation races — a redirect firing before the navigator mounts, or twice on a fast token refresh. Subscription gating (2.4) slots in as a third state without restructuring. Nothing navigates after sign-in or sign-out; the session changes and routing follows.
+
+**Sign-in (1.2).** Only the email is format-checked. Validating password length on sign-in would be wrong: an existing account may predate the current minimum, and the server is the authority on whether a credential is correct. Supabase returns the same "Invalid login credentials" for a wrong password and an unknown email — deliberately, since distinguishing them enables account enumeration — and that vagueness is preserved rather than "helpfully" narrowed.
+
+**Password reset (1.3).** Uses the app's **custom scheme** (`nashfit-dev://` / `nashfit://`) for the email redirect, not a Universal Link. Universal Links need an `apple-app-site-association` file on a domain Nash controls, which does not exist yet; a custom scheme needs no domain. The trade-off is that another app on the device can claim the scheme, which is acceptable for a link that is single-use and expires — worth revisiting once the domain lands. The scheme must also be allow-listed in the Supabase dashboard (checklist item A3) or the redirect is refused.
+
+The set-new-password screen needs no token handling of its own: Supabase's client picks the recovery token out of the deep link and establishes a temporary session, which is what authorises `updateUser`. It does have a confirmation field, unlike sign-in — the user cannot see what they are typing, and a typo would lock them out of the account they are in the middle of recovering.
+
+**Route structure.** `reset-password.tsx` was moved to `reset-password/index.tsx` so a file and a directory of the same name do not coexist; the routes are unchanged.
+
+**Verified.** Typecheck, lint, format check, and a clean iOS bundle (2149 modules) across eight routes. `Stack.Protected` was confirmed to exist in expo-router 57 by reading the type definitions before relying on it.
+
+**Not started: 1.4 and 1.5 (Apple and Google sign-in).** Both need native configuration, provider setup in the Supabase dashboard, and a development build to test — Expo Go cannot exercise native sign-in. They are the natural companion to the Xcode/Android Studio install already on the critical path for Phase 2.
+
+---
+
+## 2026-09-11 — Supabase client and sign-up screen
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 1.1 | Supabase client, encrypted session storage, generated DB types, sign-up screen | 🟨 Partial | _pending_ | |
+
+**Token storage — the decision worth recording.** Neither obvious option works on its own. `expo-secure-store` gives OS-level encryption (iOS Keychain, Android EncryptedSharedPreferences) but caps items at roughly 2KB, and a Supabase session — access JWT plus refresh token — exceeds that, so writes simply fail. `AsyncStorage` has no cap but writes plaintext, leaving a refresh token readable on a rooted device or out of an unencrypted backup; that token alone is enough to impersonate the user.
+
+Developer approved the pattern Supabase documents for exactly this: `src/lib/secure-session-store.ts` generates a random 32-byte key per entry, keeps it in SecureStore (small enough to fit), AES-CTR encrypts the session with it, and stores the ciphertext in AsyncStorage (large, but useless without the key). `getItem` treats any failure as "no session" and clears both halves — the two stores can desync, for instance when a backup restores AsyncStorage but not the Keychain, and self-healing beats a permanently broken login. This is baked into the client at creation, so changing it later would invalidate every existing session.
+
+**Generated database types.** `npm run db:types` writes `src/types/database.ts` from the linked project — 586 lines covering every table's Row/Insert/Update shape and all eight enums as TypeScript unions. The client is `createClient<Database>`, so a renamed column or an invalid enum value is a compile error rather than a runtime surprise. This is the payoff from choosing native Postgres enums at task 0.5. Added `db:types`, `db:push` and `db:reset` scripts; the generated file is Prettier-ignored, since regenerating it would otherwise fail `format:check`.
+
+**Foreground-only token refresh.** Supabase's auto-refresh runs on a timer. Left running in the background it wakes to make network calls the user cannot benefit from — wasted battery and radio on a phone sitting in a gym locker. `startSessionRefreshHandling()` starts and stops it on `AppState` changes, giving a fresh token when the user returns without the background churn.
+
+**Profile row creation.** Task 1.1's wording says "on sign-up, create the corresponding `users` profile row". That is already handled by the `handle_new_user` trigger from migration `20260901204328`, which fires for every sign-in method including Apple (1.4) and Google (1.5). Doing it client-side would mean three call sites and an auth user with no profile whenever one was missed. No client code was written for it.
+
+**UI primitives** built to §5 of the brand guidelines, so 1.2 and 1.3 reuse rather than reinvent: `Button` (one red primary per screen, 48px minimum, disabled while loading so a double tap cannot submit twice) and `TextField` (surface2 fill, red focus ring, error outranking focus, and a reserved message line so the form does not jump as validation messages appear).
+
+**Sign-up screen.** Validation runs on submit rather than per keystroke — flagging an invalid email while someone is still typing it is noise. The email check is deliberately permissive: strict regexes reject valid addresses, and the only real test is whether the confirmation email arrives. Supabase's developer-facing errors are mapped to actionable text, so nobody is shown a constraint-violation string. Both post-signup states are handled: a session returned means signed in, no session means email confirmation is pending and the screen switches to a "check your email" state.
+
+**Two config notes.**
+- Password minimum is 8 client-side against Supabase's default of 6. If the project's Auth settings are not raised to match, the server will accept something the client rejects — harmless, but the two should agree.
+- `web.output` changed from the scaffold's `'static'` to `'single'`. Static output prerenders each route in Node at build time, where `window` does not exist, and the Supabase client touches it on construction. Web is not a shipping target (the PRD is iOS + Android); this keeps `expo start --web` usable for quick checks without pretending to support server rendering.
+
+**Verified.** Typecheck, lint, format check, and a clean iOS bundle (2142 modules) — which is what proves the crypto/aes-js/secure-store chain actually resolves under Metro.
+
+**Why 🟨.** Nothing has been exercised against real auth: no account has been created, so the sign-up path, the trigger firing, the encrypted store round-tripping a session, and the confirmation-email flow are all unverified. That needs a device run. Supabase Auth's email settings on `nashfit-dev` have also not been reviewed — email confirmation on or off materially changes the flow, and the password minimum should be aligned.
+
+---
+
 ## 2026-09-07 — Brand design tokens (task 0.11, added to the plan)
 
 | Task | Work | Status | Commit | Effort |

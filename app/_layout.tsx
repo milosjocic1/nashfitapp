@@ -6,8 +6,10 @@ import { PostHogProvider } from 'posthog-react-native';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
+import { AuthProvider, useAuth } from '@/features/auth/context';
 import { posthog } from '@/lib/analytics';
 import { initMonitoring } from '@/lib/monitoring';
+import { startSessionRefreshHandling } from '@/lib/supabase';
 import { colors } from '@/theme';
 import { useBrandFonts } from '@/theme/use-fonts';
 
@@ -15,9 +17,9 @@ import { useBrandFonts } from '@/theme/use-fonts';
 // the very first render are still captured.
 initMonitoring();
 
-// Hold the splash screen until the brand fonts are ready. Without this, text
-// renders in a fallback face and then reflows into Lora — a visible jump on
-// every launch.
+// Hold the splash screen until the app knows what to show. Without this, text
+// renders in a fallback face and then reflows into Lora, and the sign-in screen
+// flashes before an already-authenticated user reaches the app.
 SplashScreen.preventAutoHideAsync();
 
 /**
@@ -37,34 +39,66 @@ const navigationTheme = {
   },
 };
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
-
-function RootLayout() {
+/**
+ * Auth-state routing (task 1.7).
+ *
+ * Both stacks are declared and expo-router's `Protected` guard decides which is
+ * reachable, rather than imperatively redirecting from inside an effect. The
+ * imperative approach is the classic source of navigation races — a redirect
+ * firing before the navigator has mounted, or twice on a fast session refresh.
+ *
+ * Subscription gating (task 2.4) adds a third state here: signed in but not
+ * subscribed goes to the paywall.
+ */
+function RootNavigator() {
+  const { isSignedIn, initialising } = useAuth();
   const fontsLoaded = useBrandFonts();
 
+  // Two independent async gates: fonts, and reading the stored session out of
+  // encrypted storage. Render nothing until both resolve — routing on an
+  // unknown session is what makes the auth screen flash on a cold start.
+  const ready = fontsLoaded && !initialising;
+
   useEffect(() => {
-    if (fontsLoaded) {
+    if (ready) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [ready]);
 
-  if (!fontsLoaded) {
+  if (!ready) {
     return null;
   }
+
+  return (
+    <Stack
+      screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface0 } }}
+    >
+      <Stack.Protected guard={isSignedIn}>
+        <Stack.Screen name="(tabs)" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={!isSignedIn}>
+        <Stack.Screen name="(auth)" />
+      </Stack.Protected>
+    </Stack>
+  );
+}
+
+function RootLayout() {
+  // Refresh auth tokens only while the app is foregrounded (task 1.1).
+  useEffect(startSessionRefreshHandling, []);
 
   return (
     // Shares the singleton from src/lib/analytics so screen autocapture and
     // manual track() calls use one client.
     <PostHogProvider client={posthog}>
-      <ThemeProvider value={navigationTheme}>
-        <Stack screenOptions={{ contentStyle: { backgroundColor: colors.surface0 } }}>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        </Stack>
-        {/* Light text: the status bar always sits on a dark surface. */}
-        <StatusBar style="light" />
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider value={navigationTheme}>
+          <RootNavigator />
+          {/* Light text: the status bar always sits on a dark surface. */}
+          <StatusBar style="light" />
+        </ThemeProvider>
+      </AuthProvider>
     </PostHogProvider>
   );
 }

@@ -63,7 +63,12 @@ const config: ExpoConfig = {
     predictiveBackGestureEnabled: false,
   },
   web: {
-    output: 'static',
+    // 'single' (client-rendered SPA), not the scaffold's 'static'. Static
+    // output prerenders each route in Node at build time, where `window` does
+    // not exist — and the Supabase client touches it on construction. Web is
+    // not a shipping target (the PRD is iOS + Android); this keeps `expo start
+    // --web` usable for quick UI checks without pretending to support SSR.
+    output: 'single',
     favicon: './assets/images/favicon.png',
   },
   plugins: [
@@ -77,6 +82,8 @@ const config: ExpoConfig = {
     'expo-image',
     'expo-status-bar',
     'expo-web-browser',
+    // Backs the encryption key for the auth-token store (task 1.1).
+    'expo-secure-store',
     // Sentry ships native code; the plugin wires up the iOS/Android crash
     // handlers and source-map upload at build time (task 0.9).
     //

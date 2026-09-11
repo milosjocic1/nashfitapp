@@ -40,13 +40,15 @@ See `docs/nashfit-progress-log.md` for the detail behind every status here.
  
 | # | Task / Prompt | Status |
 |---|---|---|
-| 1.1 | Configure Supabase Auth for email/password. Build the sign-up screen (email + password) with validation and error states. On sign-up, create the corresponding `users` profile row. | ⬜ |
-| 1.2 | Build the sign-in screen (email/password) with error handling for bad credentials. | ⬜ |
-| 1.3 | Implement password reset via email using Supabase Auth's flow (request screen + deep-link handling for the reset). | ⬜ |
+| 1.1 | Configure Supabase Auth for email/password. Build the sign-up screen (email + password) with validation and error states. On sign-up, create the corresponding `users` profile row. | 🟨 |
+| 1.2 | Build the sign-in screen (email/password) with error handling for bad credentials. | 🟨 |
+| 1.3 | Implement password reset via email using Supabase Auth's flow (request screen + deep-link handling for the reset). | 🟨 |
 | 1.4 | Add Apple sign-in (required by Apple since Google is offered). Handle the create-profile-on-first-sign-in path. | ⬜ |
 | 1.5 | Add Google sign-in, same first-sign-in profile handling. | ⬜ |
-| 1.6 | Implement persistent sessions (stay signed in across app opens) using secure token storage. Add sign-out that clears the session. | ⬜ |
-| 1.7 | Build the auth-state routing: unauthenticated → auth stack; authenticated → app (gated by subscription, see Phase 2). | ⬜ |
+| 1.6 | Implement persistent sessions (stay signed in across app opens) using secure token storage. Add sign-out that clears the session. | 🟨 |
+| 1.7 | Build the auth-state routing: unauthenticated → auth stack; authenticated → app (gated by subscription, see Phase 2). | 🟨 |
+
+**Phase 1 status.** 1.1, 1.2, 1.3, 1.6 and 1.7 are written and statically verified but not yet exercised against real auth — see `docs/nashfit-verification-checklist.md`, sections A, B3, B4 and B5. 1.4 and 1.5 (Apple and Google sign-in) are not started: both need native configuration and a development build, plus provider setup in the Supabase dashboard.
  
 ---
  

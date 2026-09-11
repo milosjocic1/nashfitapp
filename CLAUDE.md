@@ -20,6 +20,7 @@ docs/nashfit-principles-document-template.md — Nash's methodology (source of t
 docs/nashfit-user-info-gathering-template.md — onboarding inputs vs. preferences.
 docs/nashfit-build-plan.md — the sequenced task/prompt list and progress tracker. Update it as work completes.
 docs/nashfit-progress-log.md — chronological record of work done, for client transparency and invoicing. Append to it; never rewrite history.
+docs/nashfit-verification-checklist.md — things needing a device, dashboard or store account to confirm. Add to it instead of blocking; a task stays 🟨 until its items pass.
 docs/nashfit-brand-guidelines.md — colour, type, and component tokens for the app UI.
 docs/nashfit-environment-setup.md — Supabase/Sentry/PostHog setup, the client-safe vs server-only key split, and how environments switch.
 Stack (do not swap without an explicit decision)
