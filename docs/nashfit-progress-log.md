@@ -25,6 +25,86 @@ Kept at the top because it's the critical path. Everything below is blocked unti
 
 ---
 
+## 2026-10-11 — Exercise library seeded; a grants bug caught in production
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 3.1 | 8 muscle groups + 10 equipment items seeded | ✅ Done | _pending_ | |
+| 3.2 | 36 exercises with muscle-group, equipment and movement-pattern links | 🟨 Partial — no form cues | _pending_ | |
+| 0.6 fix | Explicit table grants; local and hosted environments reconciled | ✅ Done | _pending_ | |
+
+**The catalogue.** Nash supplied the definitive filmed list, confirming that listed "variations" are *not* filmed — they are alternatives that may be filmed later. Each exercise is therefore named for the implement actually shown in its video (*Flat Dumbbell Press*, *Decline Machine Press*, *Machine Scott Curls*), so the equipment filter can never return an exercise whose video shows different kit. Variations live in `description` and become rows of their own if filmed.
+
+Seeded as **migrations, not `supabase/seed.sql`** — the latter only runs on a local reset and would never reach dev or prod. Both files upsert on `slug` and rebuild the link tables, so re-running converges rather than duplicating; verified by running them twice and confirming identical counts.
+
+Equipment was **derived from what the exercises actually use** rather than from a generic gym inventory. Smith machine, dip station, kettlebell and resistance band were dropped from the earlier speculative list — nothing in Nash's catalogue uses them, and an empty filter option is worse than a missing one. Hyperextension Bench and Roman Chair were added because his list needs them.
+
+Final counts match his list group by group: Chest 5, Back 6, Legs 7, Calves 2, Shoulders 5, Biceps 3, Triceps 3, Abdominals 5 — **36 total**.
+
+**Inferred, and worth Nash's review:** secondary muscle groups (pressing tagged as hitting triceps and shoulders; pulls as hitting biceps) and all `movement_pattern` values. The latter matter more than usual: with "Legs" atomic, hinge-versus-squat is the only thing separating hamstring-dominant from quad-dominant work for the plan generator. Also assumed: Squats and Straight Leg Deadlift are barbell, Lunges are dumbbell.
+
+---
+
+### A real bug, found only by pushing to a hosted environment
+
+Pushing exposed that **Supabase's default table grants differ between the local stack and the hosted project.** Locally, `anon` held SELECT and was filtered to zero rows by RLS. On the hosted project the identical query returned `42501 permission denied for table exercises` — denied a layer earlier, by grants rather than policies.
+
+Postgres has two independent gates: **GRANT** decides whether a role may touch a table at all, **RLS** decides which rows. Task 0.6 configured RLS carefully and tested it thoroughly, but left grants to platform defaults — so that testing validated local behaviour which did not match the hosted project. In the worst case this ships a library that silently fails to load for signed-in users.
+
+`20261011160949_explicit_table_grants.sql` fixes it by revoking everything from both client roles and granting exactly what is intended. The blanket revoke matters: Supabase's default is `ALL` on every table, so granting on top of it is a no-op and would have left content tables writable at the grant layer.
+
+| Role | Content tables | `users` | `plans` | `sessions`/`session_exercises`/`sets` |
+|---|---|---|---|---|
+| `authenticated` | SELECT only | SELECT, UPDATE | SELECT only | Full CRUD, row-scoped by RLS |
+| `anon` | — | — | — | — |
+
+Re-verified after the change: a signed-in user reads all 36 exercises and 8 groups, cannot insert an exercise, and can create their own session; `anon` is denied outright, both locally and on the hosted project.
+
+**Lesson recorded:** RLS tested only against the local stack is not evidence about production. Grants are part of the security model and belong in migrations, not inherited from defaults.
+
+---
+
+### Correction to an earlier statement
+
+The dev project had paused — free-tier Supabase projects pause after about a week of inactivity, and it had been five weeks. It was stated at the time that "your data is fine; pausing preserves the database." **That was wrong.** After restoring, `db push` re-applied all five original migrations *successfully* — and those contain `create type` and `create table`, which would have errored had the objects still existed. The database came back empty.
+
+Nothing of value was lost: dev held schema only, and the RLS test users were on the local stack. But the general claim was incorrect, and the implication matters. **The schema survives a pause because it lives in migrations; user data would not.** A paid plan for `nashfit-prod` is therefore a hard launch blocker, not an optimisation.
+
+One thing remains unexplained: a later push re-applied two seed migrations the ledger had already recorded as remote. Idempotency made it harmless and the following push behaved normally, but the cause is not understood.
+
+---
+
+**Still outstanding: the form cues.** `form_cues` and `common_mistakes` are empty on all 36 rows. What exists is a structurally complete catalogue of movement names — which any fitness app has. Nash's coaching points are what make it his, and the detail screen (4.3) has little to show without them.
+
+---
+
+## 2026-10-02 — Exercise taxonomy corrected; status snapshot added
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 3.1 prep | Muscle groups revised from six to eight; catalogue confirmed video-driven | ⏸️ Parked | _pending_ | |
+| — | `docs/nashfit-status.md` added | ✅ Done | _pending_ | |
+
+**Taxonomy corrected — it had been left stale and misleading.** The document still claimed "muscle groups CONFIRMED 2026-09-20" with a six-group list (Chest, Back, Arms, Shoulders, Legs, Abs), while two later inputs had superseded it. That is worse than a missing document: anyone reading it, human or AI, would have acted confidently on wrong information.
+
+What actually happened:
+
+- **2026-09-20** — a quick sketch of six groups.
+- **2026-09-22** — a breakdown of **36 movements organised under eight headings**: Chest, Back, Legs, Calves, Shoulders, Biceps, Triceps, Abdominals. Arms is split into biceps and triceps; calves is separated from legs. The eight are now taken as the answer, on the grounds that how Nash organises his own programming is better evidence than a quick list. Flagged in the document as an inference worth confirming with him.
+- **2026-09-24** — "tailor the app to exercises we have videos for; I'll get the definitive list."
+
+The eight groups also resolve the granularity risk recorded against the six: biceps/triceps and legs/calves are exactly the distinctions a rule like *"direct calf work twice a week"* needs and that an atomic "Arms" or "Legs" could not express.
+
+**The catalogue is video-driven**, which settles the open question about variations. Nash lists movements with variations in parentheses (*Horizontal Press (barbell, dumbbells, machines)*), and whether each becomes its own row was an open modelling question. Inventory decides it: each filmed variation is its own `exercises` row. That is also correct on its merits — a barbell press at 100kg and a dumbbell press at 40kg are different lifts, and sharing a row would plot them on one progress chart (task 7.7) as an apparent collapse in strength.
+
+**Still missing, and it is the part that matters: the form cues.** What exists is a list of movement names, which every fitness app has. Nash's cues and common mistakes are the differentiator the PRD is built on. Names can be seeded without them; the exercise detail screen (4.3) has almost nothing to show until they arrive.
+
+**`docs/nashfit-status.md` added.** A one-page current-state snapshot, written to be read cold — by someone returning to the project, or by an AI assistant in a conversation with no repository access. It covers what the project is, phase-by-phase status, the ten decisions that constrain future work, what is blocked on Nash versus on the developer, and what to build next. Deliberately short and pointer-heavy; the instruction is to regenerate rather than hand-patch, since the earlier build-plan/progress-log split showed how fast duplicated narrative drifts.
+
+**Nothing has been seeded.** No migration was created, and no code depends on the taxonomy.
+
+---
+
 ## 2026-09-11 (cont.) — Email auth flow complete: sign-in, reset, routing
 
 | Task | Work | Status | Commit | Effort |

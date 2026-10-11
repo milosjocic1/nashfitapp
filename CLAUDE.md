@@ -18,7 +18,9 @@ docs/nashfit-v1-tech-stack.md — stack, architecture, AI plan-generation flow.
 docs/nashfit-v1-user-stories.md — the feature list and build order.
 docs/nashfit-principles-document-template.md — Nash's methodology (source of truth for plan generation).
 docs/nashfit-user-info-gathering-template.md — onboarding inputs vs. preferences.
+docs/nashfit-status.md — one-page current-state snapshot. READ THIS FIRST if you are new to the project or returning after a gap. Regenerate it rather than patching it.
 docs/nashfit-build-plan.md — the sequenced task/prompt list and progress tracker. Update it as work completes.
+docs/nashfit-exercise-taxonomy.md — muscle groups, equipment, and Nash's exercise breakdown. Nothing seeded yet.
 docs/nashfit-progress-log.md — chronological record of work done, for client transparency and invoicing. Append to it; never rewrite history.
 docs/nashfit-verification-checklist.md — things needing a device, dashboard or store account to confirm. Add to it instead of blocking; a task stays 🟨 until its items pass.
 docs/nashfit-brand-guidelines.md — colour, type, and component tokens for the app UI.

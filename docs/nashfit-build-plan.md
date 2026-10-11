@@ -71,8 +71,8 @@ Build the catalogue before generation — the generator selects from it.
  
 | # | Task / Prompt | Status |
 |---|---|---|
-| 3.1 | Seed the reference tables (`muscle_groups`, `equipment`) with Nash's agreed vocabulary via a migration/seed script. | ⬜ |
-| 3.2 | Seed an initial set of `exercises` (with `form_cues`, `common_mistakes`, `movement_pattern`) and their muscle-group/equipment links. Use a repeatable seed script, not manual entry. | ⬜ |
+| 3.1 | Seed the reference tables (`muscle_groups`, `equipment`) with Nash's agreed vocabulary via a migration/seed script. | ✅ |
+| 3.2 | Seed an initial set of `exercises` (with `form_cues`, `common_mistakes`, `movement_pattern`) and their muscle-group/equipment links. Use a repeatable seed script, not manual entry. | 🟨 |
 | 3.3 | Build the data-access layer for exercises (fetch list, fetch by id, with muscle groups + equipment joined). Cache the exercise list on-device for fast browse. | ⬜ |
 | 3.4 | Build the library browse screen (list/grid of exercises). | ⬜ |
 | 3.5 | Add filter by muscle group. | ⬜ |
@@ -81,6 +81,10 @@ Build the catalogue before generation — the generator selects from it.
  
 ---
  
+**Phase 3 status.** 3.1 ✅ and 3.2 🟨 — all 36 of Nash's filmed exercises are seeded to dev with muscle groups, equipment and movement patterns, via repeatable idempotent migrations. **`form_cues` and `common_mistakes` are empty**: Nash has not supplied them. They are the differentiator, and the exercise detail screen (4.3) has little to show until they arrive. 3.3–3.7 are unblocked and can now be built against real data.
+
+---
+
 ## Phase 4 — Exercise Detail & Video (Epic 4)
  
 | # | Task / Prompt | Status |
