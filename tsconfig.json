@@ -2,6 +2,11 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    // @types/jest is installed but not picked up automatically here, so the
+    // test globals (describe/it/expect) are declared explicitly. "react" and
+    // "node" are listed alongside because setting "types" at all switches off
+    // automatic @types inclusion for everything else.
+    "types": ["jest", "react", "node"],
     "paths": {
       "@/*": ["./src/*"],
       "@assets/*": ["./assets/*"]

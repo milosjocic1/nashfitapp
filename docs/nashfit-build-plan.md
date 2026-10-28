@@ -21,12 +21,12 @@ Foundational plumbing. Nothing user-facing works until this is solid, so resist 
 | 0.5 | Author the initial database schema as Supabase **migration files**, following `docs/nashfit-v1-data-model.md` exactly: `exercises`, `muscle_groups`, `equipment`, `exercise_muscle_groups`, `exercise_media`, `users`, `plans`, `sessions`, `session_exercises`, `sets`. Include enums, nullability, and FKs as specified. | ✅ |
 | 0.6 | Set up Supabase Row Level Security policies: a user can read/write only their own `users`/`plans`/`sessions`/`session_exercises`/`sets`; exercise content tables are read-only to clients. Write these as migrations. | ✅ |
 | 0.7 | Establish the Edge Functions project structure (Deno, TypeScript) and deploy a trivial health-check function to confirm the deploy pipeline works. | ✅ |
-| 0.8 | Set up CI (lint + typecheck + test on push). Keep it minimal but present from the start. | 🟨 |
+| 0.8 | Set up CI (lint + typecheck + test on push). Keep it minimal but present from the start. | ✅ |
 | 0.9 | Wire Sentry into the app and Edge Functions (crash/error monitoring live from day one). | 🟨 |
 | 0.10 | Wire PostHog into the app; add a tiny event-tracking helper so instrumenting events later is one call. Confirm an event lands in the dashboard. | 🟨 |
 | 0.11 | Implement the design tokens from `docs/nashfit-brand-guidelines.md` — colour ramp, type scale, Lora + Inter, radii — as the app theme, replacing the Expo scaffold's light/dark placeholder. Added 2026-09-06: not in the original plan, but Phase 1 builds three auth screens and they should be built against the real brand once, not twice. | ✅ |
  
-**Phase 0 partials.** 0.8 🟨 pending a test step (no test runner yet). 0.9 🟨 — app side wired and the DSN verified, but SDK capture is unverifiable until a development build, source-map upload needs the Sentry org/project slugs, and the Edge Function side waits for a function that can meaningfully fail (4.2 or 6.2). 0.10 🟨 pending confirmation that a `$screen` event from the real SDK reached PostHog.
+**Phase 0 partials.** 0.9 🟨 — app side wired and the DSN verified, but SDK capture is unverifiable until a development build, source-map upload needs the Sentry org/project slugs, and the Edge Function side waits for a function that can meaningfully fail (4.2 or 6.2). 0.10 🟨 pending confirmation that a `$screen` event from the real SDK reached PostHog.
 
 **Development build now on the critical path.** Three verifications are blocked on it — 0.9's SDK capture, 0.10's screen events under a production build, and anything native. It becomes mandatory at 2.1 (RevenueCat) regardless. Installing Xcode and Android Studio before Phase 2 would clear the backlog.
 
@@ -47,8 +47,13 @@ See `docs/nashfit-progress-log.md` for the detail behind every status here.
 | 1.5 | Add Google sign-in, same first-sign-in profile handling. | ⬜ |
 | 1.6 | Implement persistent sessions (stay signed in across app opens) using secure token storage. Add sign-out that clears the session. | 🟨 |
 | 1.7 | Build the auth-state routing: unauthenticated → auth stack; authenticated → app (gated by subscription, see Phase 2). | 🟨 |
+| 1.8 | **Account deletion, in-app.** Added 2026-10-16: Apple guideline 5.1.1(v) makes this mandatory for any app with account creation — an omission that causes rejection. Needs an Edge Function on the secret key (clients cannot delete auth users), plus a confirmation flow. The schema already cascades `auth.users` → `users` → `plans`/`sessions`/`sets`, so the data side is clean. Decide whether deletion is immediate or a grace period, and what the user is told about losing training history. **Decided 2026-10-24: immediate hard delete, no grace period.** | 🟨 |
 
 **Phase 1 status.** 1.1, 1.2, 1.3, 1.6 and 1.7 are written and statically verified but not yet exercised against real auth — see `docs/nashfit-verification-checklist.md`, sections A, B3, B4 and B5. 1.4 and 1.5 (Apple and Google sign-in) are not started: both need native configuration and a development build, plus provider setup in the Supabase dashboard.
+
+**1.8 is 🟨 for a different reason than the rest of Phase 1.** Its *server* half is the most thoroughly verified code in the project — the `delete-account` Edge Function was run end-to-end against local Supabase auth on 2026-10-24, 15 assertions including the authorisation cases (see the progress log). What remains unverified is the UI around it and the deploy to the hosted projects: checklist section **B9**, and **F1–F3** for deployment. The function is not deployed to dev or prod yet, so the feature does not work in the app today.
+
+**Known Phase 1 gap, not part of 1.8.** A user who signs up and abandons onboarding has no **sign out** — the onboarding screens have no tab bar and no exit. 1.8 added a *delete account* link there, because Apple 5.1.1(v) requires deletion to be reachable by anyone with an account, but "sign out" is the thing most people in that position actually want. It belongs to 1.6/1.7 and needs its own task.
  
 ---
  
@@ -57,9 +62,9 @@ See `docs/nashfit-progress-log.md` for the detail behind every status here.
 | # | Task / Prompt | Status |
 |---|---|---|
 | 2.1 | Integrate the RevenueCat SDK. Configure products: annual (headline) + monthly, in both App Store Connect and Google Play Console (sandbox first). | ⬜ |
-| 2.2 | Build the paywall screen showing annual + monthly, with annual framed as the value option. | ⬜ |
+| 2.2 | Build the paywall screen showing annual + monthly, with annual framed as the value option. **Apple guideline 3.1.2(c) constrains this screen**: it must clearly state what the subscription includes, the duration and renewal terms, and the price and billing frequency. Privacy policy and terms must be reachable in-app; putting both links on the paywall is the safe reading. Vague paywalls are a common rejection. | ⬜ |
 | 2.3 | Implement purchase flow via RevenueCat; handle success, cancellation, and failure states. | ⬜ |
-| 2.4 | Implement the hard paywall gate: the whole app past auth is locked until an active subscription is detected. | ⬜ |
+| 2.4 | Implement the hard paywall gate: the whole app past auth is locked until an active subscription is detected. **Account deletion must stay reachable from behind the paywall** (added 2026-10-24): guideline 5.1.1(v) applies to anyone with an account, including someone who signed up and never subscribed. The `account/delete` route is already guarded on `isSignedIn` alone for exactly this reason — keep it outside the subscription guard, and put a link on the paywall screen. | ⬜ |
 | 2.5 | Implement restore purchases and cross-device/reinstall entitlement recognition. | ⬜ |
 | 2.6 | Add a RevenueCat webhook Edge Function if subscription state needs to be queryable in Postgres (only if required — otherwise RevenueCat stays source of truth). | ⬜ |
  
@@ -73,15 +78,15 @@ Build the catalogue before generation — the generator selects from it.
 |---|---|---|
 | 3.1 | Seed the reference tables (`muscle_groups`, `equipment`) with Nash's agreed vocabulary via a migration/seed script. | ✅ |
 | 3.2 | Seed an initial set of `exercises` (with `form_cues`, `common_mistakes`, `movement_pattern`) and their muscle-group/equipment links. Use a repeatable seed script, not manual entry. | 🟨 |
-| 3.3 | Build the data-access layer for exercises (fetch list, fetch by id, with muscle groups + equipment joined). Cache the exercise list on-device for fast browse. | ⬜ |
-| 3.4 | Build the library browse screen (list/grid of exercises). | ⬜ |
-| 3.5 | Add filter by muscle group. | ⬜ |
-| 3.6 | Add filter by equipment. | ⬜ |
-| 3.7 | Add search by name. | ⬜ |
+| 3.3 | Build the data-access layer for exercises (fetch list, fetch by id, with muscle groups + equipment joined). Cache the exercise list on-device for fast browse. | ✅ |
+| 3.4 | Build the library browse screen (list/grid of exercises). | 🟨 |
+| 3.5 | Add filter by muscle group. | 🟨 |
+| 3.6 | Add filter by equipment. | 🟨 |
+| 3.7 | Add search by name. | 🟨 |
  
 ---
  
-**Phase 3 status.** 3.1 ✅ and 3.2 🟨 — all 36 of Nash's filmed exercises are seeded to dev with muscle groups, equipment and movement patterns, via repeatable idempotent migrations. **`form_cues` and `common_mistakes` are empty**: Nash has not supplied them. They are the differentiator, and the exercise detail screen (4.3) has little to show until they arrive. 3.3–3.7 are unblocked and can now be built against real data.
+**Phase 3 status.** 3.4–3.7 written and statically verified; not yet seen on a device (checklist section B6).  3.1 ✅ and 3.2 🟨 — all 36 of Nash's filmed exercises are seeded to dev with muscle groups, equipment and movement patterns, via repeatable idempotent migrations. **`form_cues` and `common_mistakes` are empty**: Nash has not supplied them. They are the differentiator, and the exercise detail screen (4.3) has little to show until they arrive. 3.3–3.7 are unblocked and can now be built against real data.
 
 ---
 
@@ -101,14 +106,18 @@ Build the catalogue before generation — the generator selects from it.
  
 | # | Task / Prompt | Status |
 |---|---|---|
-| 5.1 | Build the onboarding flow collecting the four plan inputs: age, experience level, sex, training days per week. Persist to the `users` row. Keep these strictly separate from preferences. | ⬜ |
-| 5.2 | Add helper text under each experience level so users self-assess the way Nash's rules expect. | ⬜ |
-| 5.3 | Build the unit preference (kg/lb) setting as a **preference** — display only, must never trigger plan regeneration. | ⬜ |
-| 5.4 | Implement re-onboarding: a user can edit inputs later, which triggers a new plan (Phase 6) while leaving prior plans traceable via their `input_snapshot`. | ⬜ |
-| 5.5 | Validation: enforce sensible age range and only offer training-day values the Principles Document supports. | ⬜ |
+| 5.1 | Build the onboarding flow collecting the four plan inputs: age, experience level, sex, training days per week. Persist to the `users` row. Keep these strictly separate from preferences. | 🟨 |
+| 5.2 | Add helper text under each experience level so users self-assess the way Nash's rules expect. | 🟨 |
+| 5.3 | Build the unit preference (kg/lb) setting as a **preference** — display only, must never trigger plan regeneration. | 🟨 |
+| 5.4 | Implement re-onboarding: a user can edit inputs later, which triggers a new plan (Phase 6) while leaving prior plans traceable via their `input_snapshot`. | 🟨 |
+| 5.5 | Validation: enforce sensible age range and only offer training-day values the Principles Document supports. | 🟨 |
  
 ---
  
+**Phase 5 status.** 5.1, 5.2, 5.3 and 5.5 written and statically verified; not yet run (checklist B7). 5.4 is partial by necessity — inputs can be edited and prior plans stay traceable through their own `input_snapshot`, but regeneration needs Phase 6 to exist.
+
+---
+
 ## Phase 6 — AI Plan Generation (Epic 6)
  
 The hard, iterative core. Expect to loop on 6.2–6.4 as Nash's Principles Document matures.
@@ -132,17 +141,21 @@ The hard, iterative core. Expect to loop on 6.2–6.4 as Nash's Principles Docum
  
 | # | Task / Prompt | Status |
 |---|---|---|
-| 7.1 | Build logging against a **prescribed** plan session: show the prescription, let the user log actual sets (weight + reps) per exercise. Client-generatable UUIDs. | ⬜ |
-| 7.2 | Build **ad-hoc** session logging: user assembles a session from the library, logs sets; no prescription (prescribed fields null). | ⬜ |
-| 7.3 | Add optional RPE per set. | ⬜ |
-| 7.4 | Allow reorder/remove of exercises within an ad-hoc session. | ⬜ |
-| 7.5 | Save completed sessions to history; set session `status` (in_progress/completed). | ⬜ |
-| 7.6 | Build session history view (past sessions). | ⬜ |
-| 7.7 | Build per-exercise progress view (a given exercise's logged sets across sessions over time). | ⬜ |
-| 7.8 | Ensure weights store as entered against `unit_preference` (no conversion); display in the user's unit. | ⬜ |
+| 7.1 | Build logging against a **prescribed** plan session: show the prescription, let the user log actual sets (weight + reps) per exercise. Client-generatable UUIDs. | ⏸️ |
+| 7.2 | Build **ad-hoc** session logging: user assembles a session from the library, logs sets; no prescription (prescribed fields null). | 🟨 |
+| 7.3 | Add optional RPE per set. | 🟨 |
+| 7.4 | Allow reorder/remove of exercises within an ad-hoc session. | 🟨 |
+| 7.5 | Save completed sessions to history; set session `status` (in_progress/completed). | 🟨 |
+| 7.6 | Build session history view (past sessions). | 🟨 |
+| 7.7 | Build per-exercise progress view (a given exercise's logged sets across sessions over time). | 🟨 |
+| 7.8 | Ensure weights store as entered against `unit_preference` (no conversion); display in the user's unit. **Lock `unit_preference` once any set is logged** (decided 2026-10-20): disable the Settings toggle with an explanation, warn before the first set is logged since that makes the choice permanent, and enforce it in the database so a direct API call cannot bypass the UI. | 🟨 |
  
 ---
  
+**Phase 7 status (2026-10-22).** 7.2–7.8 written and statically verified; none yet run on a device (checklist B8). **7.1 is ⏸️ blocked**: the screen handles prescribed sessions and shows targets above each exercise, but no prescribed session can exist until plan generation lands (Phase 6), which waits on the Principles Document. The code path is built and will be exercised the moment a plan exists; it cannot be verified before then.
+
+---
+
 ## Phase 8 — Offline Logging (Epic 8)
  
 | # | Task / Prompt | Status |
@@ -162,8 +175,13 @@ The hard, iterative core. Expect to loop on 6.2–6.4 as Nash's Principles Docum
 | 9.1 | Audit PostHog instrumentation: confirm key events (signup, subscribe, onboarding complete, plan generated, exercise viewed, session logged) all fire. | ⬜ |
 | 9.2 | Confirm Sentry is capturing errors from both app and Edge Functions in production config. | ⬜ |
 | 9.3 | Add the "not medical/injury advice" disclaimer surfaces (onboarding and/or plan view), per the PRD non-goals. | ⬜ |
+| 9.3a | **Release blocker:** run the pre-launch content gate (section E of `docs/nashfit-verification-checklist.md`) — no `[PLACEHOLDER]` cues in prod, every exercise has real cues and a primary video, prod on a paid plan. | ⬜ |
 | 9.4 | Build the pre-release QA checklist and run it: signup, all three logins, password reset, subscribe, restore purchases, generate plan, view video, log prescribed + ad-hoc session, offline log + sync. | ⬜ |
 | 9.5 | Prepare App Store + Google Play assets: screenshots, descriptions, privacy policy, data-handling disclosures, a reviewer test account. | ⬜ |
+| 9.5a | **Hosted pages on Nash's domain:** privacy policy (must disclose US data processing and the collection of age, sex and training history), terms of use / EULA (Apple's standard EULA may be linked instead), and a support URL. Third item blocked on the domain, alongside 1.3's deep links. **Must also state the deletion behaviour** (added 2026-10-24): deletion is immediate and permanent, there is no retention window, and it does not cancel a store subscription. Match the in-app copy in `app/account/delete.tsx` — a privacy policy promising something the app does not do is worse than silence. | ⬜ |
+| 9.5b | **Reviewer access to a hard-paywalled app.** Apple guideline 2.1(a): a reviewer who cannot get past the paywall rejects the app. Needs a demo account with an active entitlement granted through RevenueCat, and backend services live during review. Treat as a release blocker, not an asset. | ⬜ |
+| 9.5c | **Data disclosures:** Apple Privacy Nutrition Labels and Google Data Safety. Both must match what the app actually collects — age, sex, training history, email, analytics and crash data — and both stores verify. | ⬜ |
+| 9.5d | Describe AI plan generation explicitly in the store listing and review notes. No specific Apple guideline covers it, but 2.3.1(a) requires all functionality be described with specificity; better disclosed than discovered. | ⬜ |
 | 9.6 | Dry-run the two-store submission. Budget for rejections (esp. Apple). Address feedback. | ⬜ |
 | 9.7 | Confirm the Phase-1 review procedure and plan-creation notifications work end-to-end in production before real users hit generation. | ⬜ |
  
@@ -180,7 +198,7 @@ Corpus/RAG decomposition · nutrition · community/social · manual program-buil
 - Video upload/naming convention for storage keys (blocks 4.1).
 - Plan-generation prompt & output schema (blocks 6.1–6.2).
 - Notification channel for plan creation — email vs push (blocks 6.6).
-- Units switch-after-logging behaviour — lock preference or denormalize unit onto each set (decide before launch, affects 7.8).
+- ~~Units switch-after-logging behaviour~~ **RESOLVED 2026-10-20: lock the preference** once any set is logged. Needs UI lock + a warning before the first log + database enforcement. See the data model and task 7.8.
 - `is_primary` enforcement — app logic vs partial unique index (affects 3.2/4.x).
 - Phase-1 review surface — dashboard-only vs a simple internal page (affects 6.10).
 - **Brand tokens have no task.** `docs/nashfit-brand-guidelines.md` defines the dark-first system (`#ED070D`, Lora + Inter); `src/theme/` still holds Expo's default palette. Needs a task before the first user-facing screen, or Phase 1's auth screens get built twice.

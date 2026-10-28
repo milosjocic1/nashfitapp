@@ -39,8 +39,11 @@ jobs:
         if: always()
         run: npm run format:check
 
-      # No test step yet: the project has no test runner. Add one here
-      # alongside Jest when the first tests land (build-plan task 0.8 covers
-      # lint + typecheck + test; the test half is deferred until there is
-      # logic worth covering — plan-output validation, offline sync,
-      # subscription state, per CLAUDE.md).
+      # Completes build-plan task 0.8. Deliberately deferred until there was
+      # logic worth covering rather than a green suite testing nothing; the
+      # library filters were the first such piece. Per CLAUDE.md the coverage
+      # that matters next is plan-output validation (6.3), offline-sync
+      # reconciliation (8.3) and subscription state (2.4).
+      - name: Test
+        if: always()
+        run: npm test -- --ci

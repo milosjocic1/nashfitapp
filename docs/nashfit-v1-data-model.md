@@ -188,7 +188,16 @@ No `is_warmup` / `completed` flag in v1 — easy to add later.
  
 **Offline-first ids.** `sessions`, `session_exercises`, and `sets` use **client-generatable UUIDs** so offline rows have stable ids before sync. `plans` are server-generated (created by the AI server-side, not offline).
  
-**Units — edge case to resolve before launch.** Weight stored as entered against `unit_preference`, no conversion. If a user switches preference, historical sets keep raw numbers and meaning shifts. Options: lock the preference once logging exists, or denormalize the unit onto each `set`. Not a v1 blocker, but decide before launch.
+**Units — RESOLVED 2026-10-20: lock the preference.** Weight is stored as entered against `unit_preference`, with no conversion. If a user switched preference, historical sets would keep their raw numbers and silently change meaning — 100kg becoming 100lb.
+
+**Decision: `unit_preference` becomes read-only once the user has logged any set.** Before that it is freely changeable.
+
+The alternative considered was denormalising the unit onto each `set` row, which would have kept history unambiguous and allowed switching at any time. Lock was chosen as the simpler option; it costs no schema change.
+
+What this requires (task 7.8):
+- The Settings toggle disables once any set exists, with an explanation rather than a silently dead control.
+- A warning **before** the first set is logged, since that action makes the choice permanent.
+- Enforcement at the database level as well as the UI, so the rule cannot be bypassed by a direct API call.
  
 **Input snapshotting.** `plans.input_snapshot` records the inputs used at generation time, so a user editing their profile (re-onboarding) doesn't retroactively rewrite the basis of an existing plan. New inputs → new plan, old plan stays traceable.
  

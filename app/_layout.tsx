@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '@/features/auth/context';
+import { ProfileProvider, useProfile } from '@/features/profile/context';
 import { posthog } from '@/lib/analytics';
 import { initMonitoring } from '@/lib/monitoring';
 import { startSessionRefreshHandling } from '@/lib/supabase';
@@ -40,24 +41,30 @@ const navigationTheme = {
 };
 
 /**
- * Auth-state routing (task 1.7).
+ * App-state routing (tasks 1.7, 5.1).
  *
- * Both stacks are declared and expo-router's `Protected` guard decides which is
- * reachable, rather than imperatively redirecting from inside an effect. The
- * imperative approach is the classic source of navigation races — a redirect
- * firing before the navigator has mounted, or twice on a fast session refresh.
+ * Three mutually exclusive states, each a declared stack behind a guard rather
+ * than an imperative redirect inside an effect. The imperative approach is the
+ * classic source of navigation races — a redirect firing before the navigator
+ * has mounted, or twice on a fast session refresh.
  *
- * Subscription gating (task 2.4) adds a third state here: signed in but not
- * subscribed goes to the paywall.
+ *   signed out                        -> (auth)
+ *   signed in, onboarding incomplete  -> (onboarding)
+ *   signed in, onboarding complete    -> (tabs)
+ *
+ * Subscription gating (task 2.4) slots in as a fourth state between auth and
+ * onboarding without restructuring this.
  */
 function RootNavigator() {
-  const { isSignedIn, initialising } = useAuth();
+  const { isSignedIn, initialising: authInitialising } = useAuth();
+  const { onboardingComplete, loading: profileLoading } = useProfile();
   const fontsLoaded = useBrandFonts();
 
-  // Two independent async gates: fonts, and reading the stored session out of
-  // encrypted storage. Render nothing until both resolve — routing on an
-  // unknown session is what makes the auth screen flash on a cold start.
-  const ready = fontsLoaded && !initialising;
+  // Three independent async gates: fonts, the stored session, and the profile
+  // row that says whether onboarding is done. Render nothing until all three
+  // resolve — routing on an unknown profile flashes onboarding at a user who
+  // finished it months ago.
+  const ready = fontsLoaded && !authInitialising && !(isSignedIn && profileLoading);
 
   useEffect(() => {
     if (ready) {
@@ -73,8 +80,28 @@ function RootNavigator() {
     <Stack
       screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface0 } }}
     >
-      <Stack.Protected guard={isSignedIn}>
+      <Stack.Protected guard={isSignedIn && onboardingComplete}>
         <Stack.Screen name="(tabs)" />
+        {/* Logging lives outside the tab bar: an active workout is a focused
+            task, and tabs invite wandering off mid-session. */}
+        <Stack.Screen name="session/[id]" />
+        <Stack.Screen name="session/add-exercise" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="history/index" />
+        <Stack.Screen name="history/[id]" />
+        <Stack.Screen name="progress/[exerciseId]" />
+      </Stack.Protected>
+
+      <Stack.Protected guard={isSignedIn && !onboardingComplete}>
+        <Stack.Screen name="(onboarding)" />
+      </Stack.Protected>
+
+      {/* Guarded on sign-in ALONE, outside the two states above (task 1.8).
+          Apple guideline 5.1.1(v) wants deletion reachable by anyone with an
+          account, and a user who signed up but abandoned onboarding has an
+          account — they are just not in the tabs yet. Registering this inside
+          either group above would strand them with no way out. */}
+      <Stack.Protected guard={isSignedIn}>
+        <Stack.Screen name="account/delete" options={{ presentation: 'modal' }} />
       </Stack.Protected>
 
       <Stack.Protected guard={!isSignedIn}>
@@ -93,11 +120,14 @@ function RootLayout() {
     // manual track() calls use one client.
     <PostHogProvider client={posthog}>
       <AuthProvider>
-        <ThemeProvider value={navigationTheme}>
-          <RootNavigator />
-          {/* Light text: the status bar always sits on a dark surface. */}
-          <StatusBar style="light" />
-        </ThemeProvider>
+        {/* Inside AuthProvider: the profile is fetched per signed-in user. */}
+        <ProfileProvider>
+          <ThemeProvider value={navigationTheme}>
+            <RootNavigator />
+            {/* Light text: the status bar always sits on a dark surface. */}
+            <StatusBar style="light" />
+          </ThemeProvider>
+        </ProfileProvider>
       </AuthProvider>
     </PostHogProvider>
   );

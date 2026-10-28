@@ -1,8 +1,8 @@
 # NashFit — Project Status
 
-**Snapshot as of 2026-10-02.** One page, written to be read cold — by a person returning to the project, or by an AI assistant in a conversation with no access to this repository. Paste it whole.
+**Snapshot as of 2026-10-24.** One page, written to be read cold — by a person returning to the project, or by an AI assistant with no access to this repository. Paste it whole.
 
-**Keep it current by regenerating, not patching.** It summarises other documents; if it drifts from them, they are right and this is wrong.
+**Regenerate this file rather than patching it.** It summarises other documents; if it drifts from them, they are right and this is wrong.
 
 ---
 
@@ -12,55 +12,64 @@ A subscription mobile app for Dr. Nash Jocic's fitness community. v1 delivers on
 
 The differentiator is that plans and coaching come from Nash's own methodology, not a generic model.
 
-**Stack:** Expo / React Native (TypeScript) · Supabase (Postgres, Auth, Storage, Edge Functions) · Claude API for plan generation · RevenueCat for subscriptions · PostHog + Sentry.
+**Stack:** Expo / React Native SDK 57 (TypeScript) · Supabase (Postgres, Auth, Storage, Edge Functions) · Claude API for plan generation · RevenueCat for subscriptions · PostHog + Sentry.
 
 ---
 
 ## Where we are
 
-**Phase 0 (infrastructure) is complete. Phase 1 (auth) is written but unverified. Phase 3 (exercise library) is blocked on content from Nash.**
+**Everything that could be built without outside input has been built.** What remains is blocked on content from Nash, on store/toolchain setup, or on a verification pass.
 
 | Phase | Status |
 |---|---|
-| 0 — Setup & infrastructure | ✅ Complete (0.8 CI lacks a test step; 0.9/0.10 need a device to finish verifying) |
-| 1 — Auth & accounts | 🟨 Email/password flow written, not yet run against real auth. Apple/Google sign-in not started |
-| 2 — Subscription & paywall | ⬜ Not started — needs a development build and store accounts |
-| 3 — Exercise library | ⏸️ **Blocked on Nash**: the definitive list of filmed exercises and his form cues |
-| 4 — Exercise detail & video | ⏸️ Blocked on the same, plus the videos themselves |
-| 5 — Onboarding | ⬜ Not started — **fully specified and unblocked**, the obvious next build |
-| 6 — AI plan generation | ⏸️ Blocked on Nash's Principles Document, which does not exist yet |
-| 7 — Session logging | ⬜ Not started |
-| 8 — Offline logging | ⬜ Not started |
+| 0 — Setup & infrastructure | ✅ **Complete** |
+| 1 — Auth & accounts | 🟨 Email flow written but **never run against real auth**. Apple/Google sign-in and account deletion not started |
+| 2 — Subscription & paywall | ⬜ Store accounts now exist; needs a development build |
+| 3 — Exercise library | 🟨 36 exercises seeded, browse/filter/search built. **Form cues are placeholders** |
+| 4 — Exercise detail & video | ⏸️ Blocked on Nash's video files |
+| 5 — Onboarding | 🟨 Written, not yet run |
+| 6 — AI plan generation | ⏸️ Blocked on the Principles Document, which does not exist |
+| 7 — Session logging | 🟨 Built: ad-hoc sessions, RPE, reorder, history, per-exercise progress, unit lock. **7.1 ⏸️** — prescribed logging is written but no plan can exist until Phase 6 |
+| 8 — Offline logging | ⬜ Not started — unblocked, but see the note under *What to build next* |
 | 9 — Pre-launch | ⬜ Not started |
 
 ### Built and working
 
-- Expo SDK 57, TypeScript strict, ESLint + Prettier, GitHub Actions CI (lint, typecheck, format)
-- Two Supabase projects (dev, prod). **Dev has the full schema; prod is deliberately empty** until the schema proves itself
-- 11 tables, 8 enums, 12 foreign keys, 21 RLS policies — all applied and behaviourally tested
-- Environment config with separate dev/prod bundle identifiers, so both builds can coexist on one device
-- Edge Functions deploying, with a health check proving the pipeline, auth gateway and secrets channel
-- PostHog and Sentry wired; brand design tokens implemented (dark-only, Lora + Inter)
-- Full email auth flow: sign-up, sign-in, password reset, persistent encrypted sessions, auth-state routing
+- Expo SDK 57, TypeScript strict, ESLint + Prettier, CI running lint/typecheck/format/test
+- Two Supabase projects. **Dev holds the full schema and content; prod is deliberately empty**
+- 11 tables, 8 enums, 12 foreign keys, 21 RLS policies and explicit grants — applied and behaviourally tested
+- Edge Functions deploying; health check proves pipeline, auth gateway and secrets channel
+- PostHog and Sentry wired; brand tokens implemented (dark-only, Lora + Inter)
+- Full email auth: sign-up, sign-in, password reset, encrypted persistent sessions, three-state routing
+- **36 exercises** across 8 muscle groups, seeded via idempotent migrations
+- Library browse with muscle-group and equipment filters and name search, cached for offline use
+- Four-step onboarding collecting the plan inputs; Settings with unit preference
+- Full ad-hoc workout logging: start, add exercises, log sets with optional RPE, reorder, remove, resume after interruption, finish
+- Workout history and per-exercise progress over time
+- `unit_preference` locked once any set is logged — enforced by a database trigger, not only in the UI
+- **50 tests** covering library filtering, onboarding validation, the plan-input/preference split, and set entry
 
 ---
 
 ## Decisions that constrain future work
 
-Each of these is expensive to reverse. Full reasoning is in `docs/nashfit-progress-log.md`.
+Expensive to reverse. Full reasoning in `docs/nashfit-progress-log.md`.
 
 | Decision | Consequence |
 |---|---|
-| **Bundle identifiers split dev/prod** (`com.nashfit.app.dev` / `com.nashfit.app`) | Permanent once a store listing exists. Lets both builds sit on one device — required to test offline sync at 8.5 |
-| **Database enforces client-generated UUIDs** on `sessions`/`session_exercises`/`sets` (no default) | A client that forgets to generate an id fails loudly rather than the DB silently minting one and breaking offline sync |
-| **RESTRICT on deleting exercises and plans** referenced by logged history | Nash cannot delete content someone has trained against; he archives instead. Protects user history from a dashboard click |
-| **Two-phase plan review enforced in RLS**, driven by current plan status | Phase 1 vs Phase 2 is a config toggle, never hardcoded. Plan *metadata* is always visible (so "being prepared" works); the prescribed content is withheld until approved |
-| **`users` profile rows created by a database trigger** | Covers email, Apple and Google sign-in in one place. No client code creates profiles |
-| **Auth tokens encrypted at rest** (key in SecureStore, AES session in AsyncStorage) | SecureStore alone caps at ~2KB — too small for a Supabase session; AsyncStorage alone is plaintext. Changing this later invalidates every session |
-| **Dark-only theme** | The brand guidelines supply one palette, a dark one. A light theme would mean inventing colours Nash has not approved |
-| **Supabase publishable keys** (`sb_publishable_`), not legacy `anon` JWTs | Legacy keys are deprecated end of 2026 |
-| **US region** for Supabase and PostHog | Developer's call; EU was recommended. **Consequence:** the privacy policy at 9.5 must disclose US processing, since UK/EU users keep GDPR protection regardless of hosting |
-| **Exercise catalogue is video-driven** | An exercise exists only if Nash has filmed it. This also decides that each filmed variation is its own row |
+| **Bundle identifiers** `com.nashfit.app` / `.dev` | **Permanent once a store listing exists.** Lets both builds coexist on one device — required for offline-sync testing at 8.5 |
+| **Database enforces client-generated UUIDs** on logging tables | A client that forgets to generate an id fails loudly instead of the DB masking a sync bug |
+| **RESTRICT on deleting exercises and plans** with logged history | Nash cannot delete content someone trained against; he archives. Protects history from a dashboard click |
+| **Two-phase plan review enforced in RLS** by current status | The phase is a config toggle, never hardcoded. Plan metadata stays visible so "being prepared" works; prescribed content is withheld |
+| **`users` rows created by a database trigger** | One place covers email, Apple and Google sign-in. No client code creates profiles |
+| **Auth tokens encrypted at rest** (key in SecureStore, AES blob in AsyncStorage) | SecureStore alone is too small for a Supabase session; AsyncStorage alone is plaintext. Changing this invalidates every session |
+| **Plan inputs and preferences written by separate functions** | A preference change physically cannot carry a plan input. Unit preference must never regenerate a plan |
+| **`unit_preference` locks after the first logged set** | Weights are stored unconverted, so switching units would silently rewrite the meaning of every past set. Decided 2026-10-20 over the alternative of denormalising the unit onto each row |
+| **Reordering offered on ad-hoc sessions only** | A prescribed session's order is part of what Nash's rules decided |
+| **Dark-only theme** | The brand supplies one palette. A light theme would mean inventing colours Nash has not approved |
+| **US region** for Supabase and PostHog | The privacy policy must disclose US processing; UK/EU users keep GDPR protection regardless |
+| **Exercise catalogue is video-driven** | An exercise exists only if filmed. Each filmed variation is its own row, keeping per-exercise progress honest |
+| **Explicit table grants, not platform defaults** | Supabase's defaults differ between local and hosted, so local RLS testing was not evidence about production |
 
 ---
 
@@ -68,30 +77,35 @@ Each of these is expensive to reverse. Full reasoning is in `docs/nashfit-progre
 
 | Needed | Blocks |
 |---|---|
-| **Definitive list of exercises he has videos for** | All of Phase 3 |
-| **Form cues per exercise**, as discrete points | Phase 3 and the detail screen at 4.3. *This is the differentiator — without cues the library is just movement names* |
-| **The Principles Document** | All of Phase 6 (AI plan generation). The longest-lead item in the project |
-| Confirmation of the eight muscle groups, and a look at the equipment list | 3.1 |
-| A domain he controls | Password-reset deep links (1.3) and the privacy policy URL (9.5) |
+| **Form cues per exercise** | Phase 3 completion and the detail screen (4.3). *All 36 exercises currently carry `[PLACEHOLDER]` cues — a release blocker, gate E1* |
+| **Video files** | All of Phase 4 |
+| **The Principles Document** | All of Phase 6. **The longest-lead item in the project** |
+| Confirmation of the eight muscle groups and the equipment list | Content accuracy |
 
-**What exists so far:** a breakdown of 36 movements across 8 muscle groups, sent 2026-09-22 — names only, no cues, no indication of which are filmed. Recorded in `docs/nashfit-exercise-taxonomy.md`.
+Resolved: the definitive filmed-exercise list (2026-10-11), and the domain `nashfittraining.com` (2026-10-20).
 
 ## Blocked on the developer
 
 | Needed | Blocks |
 |---|---|
-| **Xcode + Android Studio**, for a development build | Verifying Sentry (0.9) and PostHog (0.10); mandatory at 2.1 for RevenueCat |
-| A device pass through `docs/nashfit-verification-checklist.md` | Moving 0.10, 1.1, 1.2, 1.3, 1.6 and 1.7 from 🟨 to ✅ |
-| Sentry auth token | Source-map upload, so production stack traces are readable |
-| App Store Connect + Google Play accounts | All of Phase 2 |
+| **A device pass** through `docs/nashfit-verification-checklist.md` | Eight sections accumulated. Moves 0.10 and all of Phases 1, 3, 5 and 7 from 🟨 to ✅ |
+| **Xcode + Android Studio** | Sentry and PostHog verification; **mandatory at 2.1** for RevenueCat |
+| Own team-member logins on both store accounts | Everything is under `nash@nashfittraining.com`; Apple 2FA on a shared login blocks submission day |
+| Sentry auth token | Readable production stack traces |
+
+Resolved: App Store Connect and Google Play accounts (2026-10-20).
 
 ---
 
 ## What to build next
 
-**Phase 5, onboarding** — the only substantial chunk with no external dependency. It collects the four plan-generation inputs (age, experience level, sex, training days per week), which are fully specified in `docs/nashfit-user-info-gathering-template.md`, and writes them to a `users` table that already exists. It also feeds Phase 6 directly.
+**1.8 — account deletion.** Small, fully unblocked, and **mandatory for App Store approval** (guideline 5.1.1(v)); its absence would cause rejection. Needs an Edge Function on the secret key, since clients cannot delete auth users. The schema already cascades cleanly.
 
-Smaller unblocked items: a test runner for CI (0.8), and the exercise data-access layer (3.3), which depends on the schema rather than on which exercises exist.
+**9.5a — privacy policy and terms**, now that `nashfittraining.com` exists. Must disclose US data processing.
+
+**Phase 8, offline logging** is the largest unblocked chunk — but it is sync built on top of a logging flow nobody has run yet. Debugging two unverified layers at once is avoidable by doing the device pass first.
+
+**The verification pass remains the highest-value thing overall.** Five phases are written on foundations that have never been exercised against real authentication. Checklist sections B3–B8 cover it.
 
 ---
 
@@ -99,12 +113,12 @@ Smaller unblocked items: a test runner for CI (0.8), and the exercise data-acces
 
 | Document | Contains |
 |---|---|
-| `docs/nashfit-build-plan.md` | Every task with its status — the task tracker |
-| `docs/nashfit-progress-log.md` | Chronological record of what was done, what was verified, and why each decision was made. Append-only; it backs invoicing |
-| `docs/nashfit-verification-checklist.md` | Everything needing a device, dashboard or store account to confirm |
-| `docs/nashfit-exercise-taxonomy.md` | Muscle groups, equipment, and Nash's exercise breakdown |
-| `docs/nashfit-environment-setup.md` | Supabase/Sentry/PostHog setup; the client-safe vs server-only key split |
-| `docs/nashfit-v1-prd.md`, `-data-model.md`, `-tech-stack.md`, `-user-stories.md` | The original specifications |
+| `docs/nashfit-build-plan.md` | Every task and its status |
+| `docs/nashfit-progress-log.md` | What was done, what was verified, why each decision was made. Append-only; backs invoicing |
+| `docs/nashfit-verification-checklist.md` | Everything needing a device, dashboard or store account — including the **pre-launch content gate** |
+| `docs/nashfit-exercise-taxonomy.md` | Muscle groups, equipment, Nash's exercise breakdown |
+| `docs/nashfit-environment-setup.md` | Supabase/Sentry/PostHog setup; client-safe vs server-only keys |
+| `docs/nashfit-v1-prd.md`, `-data-model.md`, `-tech-stack.md`, `-user-stories.md` | Original specifications |
 | `docs/nashfit-brand-guidelines.md` | Colour, type and component tokens |
 | `CLAUDE.md` | Working rules for AI assistants on this project |
 
@@ -112,7 +126,10 @@ Smaller unblocked items: a test runner for CI (0.8), and the exercise data-acces
 
 ## Honest notes
 
-- **Nothing in Phase 1 has been exercised against real authentication.** It typechecks, lints and bundles; no account has been created. That is the single largest piece of unverified work.
-- **`nashfit-prod` has no schema.** Deliberate, but it means production is not ready for anything.
-- **Three verifications are waiting on a development build**, which needs a ~15GB toolchain install. It becomes mandatory at Phase 2 regardless.
-- **The Principles Document is the critical path.** Phase 6 is the hardest part of the project and cannot start without it. Worth pressing on well before Phase 3 finishes.
+- **No account has ever been created against real auth.** Phases 1, 3, 5 and 7 typecheck, lint, test and bundle — nothing more. This is the single largest piece of unverified work.
+- **There is no paywall.** Phase 2 is unbuilt, so anyone who signs up currently gets the whole app free. The PRD specifies a hard paywall gating everything past auth — a release blocker, not a gap.
+- **Account deletion is missing** and is an App Store requirement (task 1.8).
+- **All 36 exercises have `[PLACEHOLDER]` form cues.** Deliberately unmistakable, and gated as a release blocker, but the library is currently movement names with no coaching — which is the product's whole differentiator.
+- **`nashfit-prod` has no schema.** Deliberate, but production is not ready for anything.
+- **A paused free-tier Supabase project came back empty** on dev (2026-10-11). The schema survived because it lives in migrations; user data would not have. A paid prod plan is a launch blocker.
+- **The Principles Document is the critical path.** Phase 6 is the hardest part of the build and cannot start without it.

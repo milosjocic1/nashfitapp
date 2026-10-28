@@ -14,9 +14,13 @@ type IconSymbolName = keyof typeof MAPPING;
  */
 const MAPPING = {
   'house.fill': 'home',
-  'paperplane.fill': 'send',
-  'chevron.left.forwardslash.chevron.right': 'code',
+  'gearshape.fill': 'settings',
   'chevron.right': 'chevron-right',
+  // Library browse (tasks 3.4–3.7)
+  'dumbbell.fill': 'fitness-center',
+  'figure.strengthtraining': 'sports-gymnastics',
+  magnifyingglass: 'search',
+  'xmark.circle.fill': 'cancel',
 } as const satisfies Record<string, ComponentProps<typeof MaterialIcons>['name']>;
 
 /**

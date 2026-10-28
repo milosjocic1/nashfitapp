@@ -18,10 +18,206 @@ Kept at the top because it's the critical path. Everything below is blocked unti
 |---|---|---|
 | `SENTRY_AUTH_TOKEN` for source-map upload | 0.9 (source maps), 9.2 | Org/project slugs are now configured (`nashfit`/`nashfit`). Upload still needs this token in the build environment — it grants write access to the Sentry org, so EAS build secrets only, never the repo or bundle. Generate at Settings → Auth Tokens. |
 | `nashfit-functions` DSN, via `supabase secrets set` | 0.9 (server half) | Not needed until the first Edge Function that can meaningfully fail (4.2 or 6.2). |
+| Own team-member logins on both store accounts | 2.x | Everything is under `nash@nashfittraining.com`. Apple requires 2FA, so a shared login means codes go to Nash's device — a hard blocker on submission day. Add the developer as Admin/App Manager with a separate Apple ID and Google account. |
 | Xcode + Android Studio, for a development build | 0.9, 0.10, 2.1 | Three verifications are blocked on it, and RevenueCat makes it mandatory at 2.1 anyway. |
 | Confirm a `$screen` event reached PostHog | 0.10 (final ✅) | The app ran on device; checking PostHog → Activity for a `$screen` event alongside `setup_verification` is the last step to close 0.10. |
-| Nash's domain (for deep links + privacy policy URL) | 1.3, 9.5 | Universal Links / App Links need files hosted on a controlled domain. Not needed for the bundle identifier, which is set. |
+| ~~Nash's domain~~ **RESOLVED 2026-10-20** | — | `nashfittraining.com`. Unblocks Universal Links for password reset (1.3) and hosting for privacy policy / terms (9.5a). |
 | Nash's Principles Document | Phase 6 (6.1–6.5) | Listed in CLAUDE.md as source of truth but absent from `/docs`. Hard prerequisite for plan generation; the longest lead-time item in the project. |
+
+---
+
+## 2026-10-24 — Account deletion (1.8)
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 1.8 | `delete-account` Edge Function | 🟨 Written, **verified end-to-end locally**, not deployed | _pending_ | |
+| 1.8 | Confirmation screen, Settings and onboarding entry points | 🟨 Written | _pending_ | |
+
+**Why this task, now.** Apple guideline 5.1.1(v) makes in-app account deletion mandatory for any app offering account creation. Its absence is a rejection, not a note. It was also the only fully unblocked item left in Phase 1.
+
+**Decision: immediate hard delete, no grace period.** A scheduled deletion is a promise kept by a background job rather than by a request. It needs a sweeper that must actually run — on infrastructure where a paused free-tier project already came back empty once (dev, 2026-10-11). If that job silently stops, the app has told users their data is gone while it sits in the table, which is a worse position than never offering a window. A grace period would also have to be disclosed in the privacy policy (9.5a) and would add a fourth account state to routing that has never been exercised against real auth. The thing it buys — undo for a mis-tap — is bought more cheaply by a typed confirmation. It remains additive later if support requests ever justify it.
+
+Apple permits a wind-down; what 5.1.1(v) forbids is deactivation offered *instead of* deletion. Immediate deletion satisfies the strictest reading, so this choice is a simplification rather than a compliance risk. Re-reading the current guideline before submission is checklist **F4**.
+
+**A predicted schema failure that turned out not to exist.** `sessions.plan_id` is `ON DELETE RESTRICT`, so deleting a user looked like it should fail: the cascade into `plans` would hit a session still referencing the plan. Tested against the real schema before writing any migration — it succeeds. The `sessions.user_id` cascade is queued by the same statement that queues the `plans` cascade, so the session rows are gone before the nested RESTRICT check runs. Separately confirmed that deleting a plan *directly* is still refused, so Nash's protection against destroying a plan someone trained against is untouched.
+
+**No migration was written.** Worth recording explicitly: the instinct was to relax the constraint to `NO ACTION`, and testing first showed the schema was already correct. Changing it would have weakened a deliberate protection to fix nothing.
+
+**Server-side authorisation is the whole risk here.** The function takes the user id from the verified JWT and from nowhere else. An endpoint that read a user id from the request body would let any authenticated user delete any account — so that is the case the tests target directly: authenticate as one user, name a different user in the body, and confirm the *caller* is the one deleted and the named account survives.
+
+**Verified — 15 assertions against local Supabase auth**, with real users, real JWTs, and a seeded plan + prescribed session + logged sets:
+
+- rejects a call with no JWT (401), a malformed JWT (401), and `GET` (405)
+- a body-supplied `user_id` is ignored: the caller is deleted, the named account survives
+- deletes a user who has a plan with training logged against it — the case the RESTRICT scare was about
+- cascade confirmed empty across `users`, `plans`, `sessions`, `session_exercises`, `sets`
+- the `auth.users` row returns 404, proving a hard delete rather than Supabase's soft delete
+- a repeat delete with a still-valid token returns success, not an error
+- the email address can be reused afterwards
+
+This is a stronger standard of evidence than anything else in Phase 1, which is written but has never run against real auth. It does **not** extend to the UI or to the hosted projects.
+
+**A gap found while building.** A user who signs up and abandons onboarding had no sign-out and no delete: the onboarding screens have no tab bar and no exit, so the account was unreachable and undeletable. Since 5.1.1(v) covers anyone with an account, the delete route is guarded on `isSignedIn` alone — outside both the onboarding and tabs states — with a quiet link on the onboarding screen. **The missing sign-out is a separate gap** belonging to 1.6/1.7 and was deliberately not fixed here; it is noted in the build plan and still needs its own task.
+
+**What the user is told**, on a full screen rather than an alert, because an alert is the surface people dismiss without reading: training history is erased permanently; **the subscription is not cancelled** and must be cancelled with Apple or Google, named per platform; signing up again starts from nothing. The subscription point has money attached — Phase 2 has not landed, so nobody has a subscription to cancel today, but the copy exists now rather than being remembered at launch. 9.5a was updated to require the privacy policy to match it.
+
+**Deliberately not done.** The function is **not deployed** — deleting an account does not work in the app until checklist **F1** runs. Deployment is a change to hosted infrastructure and was left for the developer.
+
+**Verified.** Typecheck, lint, Prettier, 59 tests (up from 50 — 9 new, covering the confirmation gate, that the client never names a user, and that a failed delete leaves the session intact). Plus the 15 live assertions above.
+
+**Unverified.** Every pixel. No screen has been on a device — checklist **B9**. The Edge Function has not run on hosted Supabase, only locally — **F1–F3**.
+
+---
+
+## 2026-10-22 — Phase 7 built: logging, history, progress
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 7.1 | Prescribed-session logging | ⏸️ Built, unverifiable | _pending_ | |
+| 7.2–7.5 | Ad-hoc sessions, RPE, reorder/remove, save to history | 🟨 Written | _pending_ | |
+| 7.6 | Session history | 🟨 Written | _pending_ | |
+| 7.7 | Per-exercise progress | 🟨 Written | _pending_ | |
+| 7.8 | Units stored as entered; preference locked | 🟨 Written | _pending_ | |
+
+**One screen handles both session types.** Prescribed and ad-hoc sessions differ only in whether a prescription exists, so `session/[id]` renders both: targets appear above each exercise when present, and ad-hoc exercises show no prescription row at all rather than a row of dashes, which would imply one exists. Reordering is offered on ad-hoc sessions **only** — the order of a prescribed session is part of what Nash's rules decided, and is not the user's to shuffle.
+
+**Resume comes before start** on the Train tab. A workout interrupted by a phone call is the normal case, not the exception, and burying the resume behind "start a workout" is how someone ends up with two half-sessions. The check refetches on focus rather than mount, so returning from a finished session does not leave a stale resume card.
+
+**Finishing is blocked at zero sets.** Saving an empty session would put a workout with nothing in it into history, which is never what anyone means.
+
+**Progress is a table, not a chart (7.7).** Weight alone is a misleading line — 100×5 and 80×12 are different kinds of hard — and a chart ignoring reps invites reading a deload as decline. The numbers, oldest first, let a lifter judge for themselves, which is how Nash's audience thinks about progression. Charting is reasonable for v2 once there is enough history for a trend to mean anything.
+
+**History rows summarise rather than enumerate**: date, exercises, set count and heaviest set. Someone scanning is looking for "when did I last train legs", not a transcript — that is what tapping in is for. The detail view shows **both sides of the split**, prescribed against actual, which is the comparison the whole prescribe-then-log loop exists to produce.
+
+**Unit lock completed (7.8).** The database trigger landed earlier; this adds the client half. `has_logged_sets()` is called through RPC rather than counting rows client-side, and **fails closed** — if the check errors, the UI assumes locked. Wrongly allowing a change silently rewrites the meaning of every past set; wrongly blocking one is merely annoying and recoverable. The Settings toggle disables with an explanation rather than becoming a silently dead control.
+
+Regenerating `src/types/database.ts` was required before the RPC typechecked — a useful reminder that `npm run db:types` is part of any migration that adds a function.
+
+**Why 7.1 is ⏸️ rather than 🟨.** The prescribed-logging path is written and will work, but **no prescribed session can exist** until plan generation lands (Phase 6), which waits on the Principles Document. It cannot be verified before then, and marking it 🟨 would imply a device pass could close it.
+
+**Verified.** Typecheck, lint, format, 50 tests, clean iOS bundle (2177 modules). The unit-lock trigger was separately verified against the database across six cases, including that deleting history releases the lock.
+
+---
+
+## 2026-10-20 — Phase 7 begun: units locked, logging data layer
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 7.8 | `unit_preference` lock enforced in the database | 🟨 Enforcement done, UI pending | _pending_ | |
+| 7.1–7.7 | Logging types and data-access layer | 🟨 In progress | _pending_ | |
+
+**Units decision resolved (2026-10-20): lock the preference.** Weight is stored exactly as entered with no conversion, so switching units would silently rewrite the meaning of every historical set — 100kg becoming 100lb. The alternative considered was denormalising the unit onto each `set` row, which would have kept history unambiguous and allowed switching freely; lock was chosen as the simpler option and costs no schema change. Recorded in the data model, which had flagged this as "decide before launch".
+
+Enforced by a trigger, not only in the UI: a disabled toggle is a suggestion, and the REST API is directly reachable with the publishable key. The check tests for *current* existence of sets, so it self-heals — a user who deletes their history can change units again, where a one-way flag could disagree with the data it describes. A `has_logged_sets()` function lets the client disable the toggle without pulling every set down to count them.
+
+Verified behaviourally, all six cases: changing units before any set exists is allowed; after a set exists it is rejected; updating other columns on the row still works; writing the *same* unit is not treated as a change; `has_logged_sets()` reports correctly; and deleting history releases the lock.
+
+**Logging data layer.** `src/features/logging/` holds the types and queries for Epic 7, built around the prescription-versus-actual split the data model insists on: `prescribed_*` is what the AI said to do, `sets` is what the user did, and they are never merged. `hasPrescription` is checked per exercise rather than per session, since a prescribed session may contain an exercise without targets and the UI should not render "— × —".
+
+**Every id is client-generated.** `newId()` is the only source, matching the schema's deliberate absence of a `gen_random_uuid()` default on the three logging tables. A row written with no connection already has its final identity, which is what makes Epic 8's sync an insert rather than a reconciliation.
+
+Ad-hoc sessions write `created_by: 'user'` explicitly and set all four `prescribed_*` columns to null — the RLS insert policy enforces the former independently, so a client cannot pass a hand-built workout off as Nash-generated.
+
+`completeSession` stamps `performed_at` on completion rather than creation, because a prescribed session exists before it is performed and the column means the workout, not the row.
+
+**Set-entry validation and the session hook.** `validation.ts` deliberately errs towards accepting input: this is used one-handed mid-workout, and blocking someone over a rule that only catches typos is worse than storing an odd number. Zero weight is **accepted** so bodyweight exercises are loggable — rejecting it would make pull-ups impossible to record. A comma is accepted as a decimal separator, since European keyboards offer one. RPE is optional, so blank returns no value rather than an error, and is restricted to half points because 7.25 is not a thing anyone means.
+
+`suggestNextSet` carries the previous set's weight and reps forward — retyping the same numbers five times is the main friction in logging — falling back to the prescription on the first set of a prescribed exercise. RPE is **not** carried forward: it describes the set just performed, and pre-filling invites accepting a stale number.
+
+`useSession` refetches after every mutation rather than patching local state. A workout is not latency-sensitive between sets, and the simpler model removes any chance of the screen and the database disagreeing about how many sets were logged — drift a user would only notice after finishing. Mutation errors are surfaced, never swallowed: a set the user believes they logged but which never landed is the worst outcome in this feature.
+
+**Tests now 50, up from 29.** The new 21 cover weight/reps/RPE validation including the bodyweight-zero and comma-decimal cases, the next-set suggestion precedence, and the prescription-versus-actual helpers — including that an ad-hoc exercise returns `null` rather than a placeholder, since rendering "— × —" would imply a prescription exists.
+
+**Still to build:** the logging screens (7.1–7.5), history (7.6), per-exercise progress (7.7), and the Settings UI half of 7.8.
+
+---
+
+## 2026-10-15 (cont. 2) — Onboarding, settings, and three-state routing
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 5.1 | Four-step onboarding collecting the plan inputs | 🟨 Written | _pending_ | |
+| 5.2 | Helper text under each experience band | 🟨 Written | _pending_ | |
+| 5.3 | Unit preference as a display-only setting | 🟨 Written | _pending_ | |
+| 5.4 | Re-onboarding entry point | 🟨 Partial | _pending_ | |
+| 5.5 | Age and training-day validation | 🟨 Written | _pending_ | |
+
+**The plan-input / preference split is enforced structurally**, not by convention. `savePlanInputs` and `saveUnitPreference` are separate functions touching disjoint columns, so a preference write cannot carry a plan input with it. Settings presents them as two sections with different wording — "changing them creates a new one" versus "changing these never affects your plan" — because the difference matters to the user and is invisible otherwise. Unit preference is deliberately **not** an onboarding step, for the same reason.
+
+`isOnboardingComplete` is **derived from the four inputs**, not stored as a flag. A separate boolean can disagree with the data it describes, and then nothing tells you which is right.
+
+**Four steps rather than one form.** These four values are the only things the generator knows about a user; a stepped flow makes that weight visible where a four-field form invites rushing. It also gives each experience band room for the helper text task 5.2 requires — the template is explicit that people misjudge their own level, which a segmented control or wheel picker cannot address.
+
+**Nothing is written until the final step.** A half-saved profile is a state nothing else understands, and `isOnboardingComplete` would flip the moment the last field happened to land.
+
+**Routing now has three states** — signed out, signed in without onboarding, signed in with it — each a declared stack behind a guard. Subscription gating (2.4) slots in as a fourth without restructuring. The readiness gate grew a third condition: fonts, session, *and* profile. Routing on an unknown profile would flash onboarding at someone who completed it months ago.
+
+**A React 19 lint rule caught a real bug.** The first profile context called a loader synchronously inside an effect, which `react-hooks/set-state-in-effect` rejects as a cascading render. Rewriting it to **key state by user id and derive during render** fixed the rule and, more usefully, removed a class of bug: a stale profile cannot be briefly visible to the next person on a shared device, because it is never read when the ids disagree. The rule pointed at a correctness problem, not a style one.
+
+**Tests: 29 passing, up from 16.** The new ones cover age validation (including that `32kg` is rejected rather than salvaged as 32 by `parseInt`), the training-day options matching what the Principles Document is expected to support, and the input/preference split — specifically that `isOnboardingComplete` does **not** depend on unit preference, and that `toPlanInputs` returns exactly four fields. That last assertion is equality rather than a subset check: anything extra leaking through would end up in `plans.input_snapshot` and make a preference look like a plan input.
+
+**Why 5.4 is partial.** Inputs can be edited and prior plans stay traceable through their own `input_snapshot`, but "triggers a new plan" needs Phase 6 to exist.
+
+**Also replaced the debug home screen** that had stood since Phase 0 with a real Settings screen. Tabs are now Library and Settings.
+
+**Verified.** Typecheck, lint, format, 29 tests, clean iOS bundle (2165 modules). Not yet run on a device — checklist section B7 covers it, and needs a *fresh* account since an onboarded user skips the flow.
+
+---
+
+## 2026-10-15 (cont.) — Library browse, filters and search
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 3.4 | Browse screen with 36 real exercises | 🟨 Written | _pending_ | |
+| 3.5 | Muscle-group filter | 🟨 Written | _pending_ | |
+| 3.6 | Equipment filter | 🟨 Written | _pending_ | |
+| 3.7 | Search by name | 🟨 Written | _pending_ | |
+
+**Text-only rows, deliberately.** The brand guidelines describe library rows as "thumbnail + serif name + sans metadata", but `exercise_media` is empty — no videos, no stills. A placeholder tile would make every row look broken in every demo until Nash delivers. The row layout leaves a natural left slot, so thumbnails drop in later without a redesign.
+
+Each row shows the name in Lora and one line of `primary muscle group · equipment` in Inter. Movement pattern and secondary groups are available but omitted: at arm's length mid-workout, a third line of grey text costs more than it tells.
+
+**No cards.** §5 specifies cards on `surface1`, which is right for a detail panel and wrong for a 36-row list — it reads as heavy and repetitive. Separation comes from hairline separators and vertical rhythm instead, with `surface1` used as the pressed state. A deliberate departure, noted for Nash's eye.
+
+**Two chip rows rather than a filter sheet.** Filtering is the main action on this screen; a sheet costs a tap and a modal every time and hides the current selection. Scrolling chips keep it visible. Per §5's one-accent rule only the muscle-group row uses brand red; equipment marks selection with a border instead, which also establishes which filter leads.
+
+**Unavailable options are dimmed, not hidden.** An option that would return nothing under the other active filters is disabled at 35% opacity. Hiding them makes the list reshuffle as you use it, which is disorienting; a visibly unavailable option still communicates something. A selected chip stays tappable even at zero so it can always be undone.
+
+**The header scrolls away with the list.** Title, search and both chip rows come to about 160pt — pinned, that is most of a small phone screen. The list is what matters once filtering is done.
+
+**States covered:** first load with an empty cache (the only spinner — a warm cache skips it), load failure with nothing cached, no matches with a clear-filters route out, and pull-to-refresh. A failed background refresh over good cached data stays silent.
+
+**Verified.** Typecheck, lint, format, 16 tests, clean iOS bundle (2158 modules). **Not yet seen on a device** — this is the first screen in the project a user would recognise as the product, and it has only been compiled, not looked at.
+
+---
+
+## 2026-10-15 — Library data layer, filtering, and the test runner (0.8 closed)
+
+| Task | Work | Status | Commit | Effort |
+|---|---|---|---|---|
+| 3.3 | Data-access layer, on-device cache, filter/search logic | ✅ Done | _pending_ | |
+| 0.8 | Jest added; CI now runs lint + typecheck + format + test | ✅ Done | _pending_ | |
+| 3.2 | Placeholder form cues with a release gate | 🟨 Partial | _pending_ | |
+
+**Data access (3.3).** `src/features/library/` holds types derived from the generated `Database` type, Supabase queries, an on-device cache and pure filter logic. Muscle groups and equipment are joined in a single round trip rather than stitched client-side, which avoids both the extra latency and a torn read if content changed between calls.
+
+**Cache-first, stale-while-revalidate.** Cached content renders immediately and a refresh runs behind it. The alternative — a spinner until the network answers — is precisely wrong for an app used standing in a gym on a weak connection. A failed *background* refresh over good cached data is swallowed rather than surfaced; an error only reaches the user when there is nothing to show.
+
+AsyncStorage rather than SQLite, deliberately: this is a small read-only blob replaced wholesale, not relational data to query. SQLite arrives in Phase 8 for offline *writes*, where the conflict model needs it. It is also unencrypted on purpose — the catalogue is Nash's content, identical for every subscriber and already on their screen. Auth tokens are the thing that needs encrypting and have their own store.
+
+**Filtering is client-side over the cached list** (3.5–3.7), not server queries. The catalogue is ~36 rows, and a filter that needs the network fails exactly when it is needed. Muscle-group filtering matches **primary and secondary** roles — someone filtering to "Triceps" wants presses too — while rows stay labelled with their primary group so the distinction remains visible. Search covers the name only: descriptions currently read "Also performed with a barbell", so searching "barbell" would otherwise surface machine exercises.
+
+`countsByMuscleGroup` / `countsByEquipment` count each option against the *other* active filters, so the UI can dim options that would return nothing rather than letting someone tap into an unexplained empty screen.
+
+**Task 0.8 closed.** Jest (via `jest-expo`) added, and the CI workflow now runs the test step that had been deliberately deferred since Phase 0. The deferral was to avoid a green suite testing nothing; the library filters were the first logic genuinely worth locking down. **16 tests** cover muscle-group and equipment filtering, AND-combination, case/whitespace/accent-insensitive search, the deliberate exclusion of descriptions from search, and the option-count behaviour.
+
+Two setup snags worth recording. `expo-modules-core` was not hoisted to the root (it sits under `expo/node_modules`), so `jest-expo`'s preset could not resolve it — fixed by installing it explicitly at the SDK-compatible version. And `@types/jest` was not being picked up automatically, so `expect` was untyped: typecheck caught this *after* the tests passed, which is a useful reminder that a green test run is not evidence the code typechecks. Resolved with an explicit `types` array in `tsconfig.json`, which also has to list `react` and `node` since setting `types` at all disables automatic inclusion.
+
+**Placeholder cues.** All 36 exercises carry four placeholder cues and two common mistakes so the detail screen (4.3) can be built against realistic content — deliberately varied in length, including one that wraps to three lines, because a layout tested against four tidy strings breaks on Nash's real cues.
+
+Every string is prefixed `[PLACEHOLDER]`. Plausible-looking placeholder coaching is the dangerous kind: CLAUDE.md forbids presenting cues Nash did not write, and the failure mode is invented coaching quietly shipping under his name. **Section E of the verification checklist and task 9.3a now make this a release blocker**, alongside checks that every exercise has real cues and a primary video, and that `nashfit-prod` is on a paid plan.
+
+**Verified.** Lint, typecheck, format check, 16 tests, and a clean iOS bundle (2149 modules). The seed migrations and grants are live on dev.
 
 ---
 

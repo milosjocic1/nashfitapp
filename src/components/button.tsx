@@ -15,8 +15,12 @@ type ButtonProps = Omit<PressableProps, 'style' | 'children'> & {
   /**
    * Primary is the brand-red fill. Per §5, only ONE primary button per
    * screen — if everything is red, nothing reads as the main action.
+   *
+   * `destructive` is a separate axis, not a third rank: it uses the semantic
+   * error colour, which §8 keeps deliberately distinct from the brand red so
+   * "delete forever" never looks like "continue".
    */
-  variant?: 'primary' | 'secondary';
+  variant?: 'primary' | 'secondary' | 'destructive';
   loading?: boolean;
   style?: StyleProp<ViewStyle>;
 };
@@ -36,7 +40,9 @@ export function Button({
   style,
   ...rest
 }: ButtonProps) {
-  const isPrimary = variant === 'primary';
+  // Both filled variants carry white text and a white spinner; only the
+  // outlined secondary differs.
+  const isFilled = variant === 'primary' || variant === 'destructive';
   // `loading` disables too: a double-tapped sign-up submits twice.
   const isDisabled = disabled || loading;
 
@@ -47,7 +53,7 @@ export function Button({
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.base,
-        isPrimary ? styles.primary : styles.secondary,
+        styles[variant],
         pressed && styles.pressed,
         isDisabled && styles.disabled,
         style,
@@ -55,7 +61,7 @@ export function Button({
       {...rest}
     >
       {loading ? (
-        <ActivityIndicator color={isPrimary ? colors.textPrimary : colors.textSecondary} />
+        <ActivityIndicator color={isFilled ? colors.textPrimary : colors.textSecondary} />
       ) : (
         <Text variant="label" color="textPrimary">
           {label}
@@ -82,6 +88,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
+  },
+  // Filled, not outlined: an irreversible action should not look like the
+  // quiet option sitting next to it.
+  destructive: {
+    backgroundColor: colors.error,
   },
   pressed: {
     opacity: 0.8,
